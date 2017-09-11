@@ -29,7 +29,7 @@ In the root directory of this repository, input the following commands.
 
 3. Install Tensorflow
 
-        pip install tensorflow==1.2.0    // tensorflow-gpu is GPU is available
+        pip install tensorflow==1.2.0    // tensorflow-gpu if GPU is available
 
 4. Install Keras
 
