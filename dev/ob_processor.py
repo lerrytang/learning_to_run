@@ -33,10 +33,11 @@ class BodySpeedAugmentor(ObservationProcessor):
     def process(self, ob):
 
         # deal with obstacles
-        pelvis_x = ob[1]
-        ob_x = ob[-3] + pelvis_x
-        self.obstacle_pos.add(ob_x)
-        if len(self.obstacle_pos) >= MAX_NUM_OBSTACLE:
+        if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
+            pelvis_x = ob[1]
+            ob_x = ob[-3] + pelvis_x
+            self.obstacle_pos.add(ob_x)
+        else:
             ob[-3:] = [0]*3
 
         # generate velocity for body parts
@@ -100,10 +101,11 @@ class SecondOrderAugmentor(ObservationProcessor):
     def process(self, ob):
 
         # deal with obstacles
-        pelvis_x = ob[1]
-        ob_x = ob[-3] + pelvis_x
-        self.obstacle_pos.add(ob_x)
-        if len(self.obstacle_pos) >= MAX_NUM_OBSTACLE:
+        if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
+            pelvis_x = ob[1]
+            ob_x = ob[-3] + pelvis_x
+            self.obstacle_pos.add(ob_x)
+        else:
             ob[-3:] = [0]*3
 
         # generate velocities
