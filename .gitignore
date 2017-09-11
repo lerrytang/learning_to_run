@@ -1,0 +1,8 @@
+src*/
+trials*/
+*do_not_upload.py
+*.sh
+*.pyc
+*.txt
+*.log
+*.swp
