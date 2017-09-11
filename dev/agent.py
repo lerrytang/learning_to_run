@@ -26,9 +26,17 @@ class DDPG:
         self.env = env
         self.ob_processor = ob_processor
         self.ob_dim = (self.env.observation_space.shape[0]+ob_processor.get_aug_dim(), )
-        self.act_dim = self.env.action_space.shape
-        self.act_high = self.env.action_space.high
-        self.act_low = self.env.action_space.low
+
+        if "jump" in config and config["jump"]:
+            assert self.env.action_space.shape[0] % 2 == 0
+            real_act_dim = self.env.action_space.shape[0]/2
+            self.jump = True
+        else:
+            real_act_dim = self.env.action_space.shape[0]
+            self.jump = False
+        self.act_dim = (real_act_dim, )
+        self.act_high = self.env.action_space.high[:real_act_dim]
+        self.act_low = self.env.action_space.low[:real_act_dim]
         self.memory = memory
         self.rand_process = rand_process
 
@@ -256,7 +264,10 @@ class DDPG:
             action += self.rand_process.sample()
             action = np.clip(action, self.act_low, self.act_high)
             noisy_action_hist = self.append_hist(noisy_action_hist, action)
-            new_ob, reward, done, info = self.env.step(action.squeeze())
+            act_to_apply = action.squeeze()
+            if self.jump:
+                act_to_apply = np.tile(act_to_apply, 2)
+            new_ob, reward, done, info = self.env.step(act_to_apply)
 
             # store experience
             assert np.all((action>=self.act_low) & (action<=self.act_high))
@@ -328,7 +339,10 @@ class DDPG:
             observation = np.reshape(new_ob, [1, -1])
             action, _ = self.actor.predict(observation)
             action = np.clip(action, self.act_low, self.act_high)
-            new_ob, reward, done, info = self.env.step(action.squeeze())
+            act_to_apply = action.squeeze()
+            if self.jump:
+                act_to_apply = np.tile(act_to_apply, 2)
+            new_ob, reward, done, info = self.env.step(act_to_apply)
             episode_reward += reward
             episode_steps += 1
             done = done | (episode_steps>=max_steps)
