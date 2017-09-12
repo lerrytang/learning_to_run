@@ -27,13 +27,13 @@ def prepare_for_logging(name, create_folder=True):
     format_string = "%(asctime)s (pid=%(process)d) [%(levelname)s] %(message)s"
     formatter = logging.Formatter(format_string)
 
-    logger = logging.getLogger(name)
+    current_time = datetime.strftime(datetime.now(), "%Y%m%d_%H%M%S")
+    logger = logging.getLogger(name + "_" + current_time)
     logger.setLevel(logging.INFO)
 
     log_dir = None
     if create_folder:
         # create folder to save log and results
-        current_time = datetime.strftime(datetime.now(), "%Y%m%d_%H%M%S")
         dirname = name + "_" + current_time
         log_dir = os.path.join("trials", dirname)
         if not os.path.exists(log_dir):
