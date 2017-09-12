@@ -3,6 +3,7 @@ from nipsenv import NIPS
 from keras.layers import Lambda
 from rand import OrnsteinUhlenbeckProcess as OUP
 from mem import ReplayBuffer as RB
+from mem import PrioritizedReplayBuffer as PRB
 from agent import DDPG
 from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
 import util
@@ -67,10 +68,18 @@ def create_memory(env, config):
         act_dim = env.action_space.shape[0] / 2
     else:
         act_dim = env.action_space.shape[0]
-    return RB(
-            ob_dim=(env.observation_space.shape[0]+config["ob_aug_dim"],),
-            act_dim=(act_dim, ),
-            capacity=config["memory_capacity"])
+
+    if "prioritized" in config and config["prioritized"]:
+        memory = PRB(
+                ob_dim=(env.observation_space.shape[0]+config["ob_aug_dim"],),
+                act_dim=(act_dim, ),
+                capacity=config["memory_capacity"])
+    else:
+        memory = RB(
+                ob_dim=(env.observation_space.shape[0]+config["ob_aug_dim"],),
+                act_dim=(act_dim, ),
+                capacity=config["memory_capacity"])
+    return memory
 
 
 def train(config, trial_dir=None, visualize=False):
@@ -327,7 +336,7 @@ if __name__ == "__main__":
                 "save_snapshot_every": 3,
                 "gamma": 0.99,
                 "tau": 1e-3,
-                "batch_size": 128,
+                "batch_size": 32,
                 "actor_l2": 1e-6,
                 "actor_lr": 1e-4,
                 "critic_l2": 1e-6,
@@ -344,8 +353,8 @@ if __name__ == "__main__":
                 "critic_hiddens": [128, 128, 64, 64],
                 "scale_action": scale_action,
                 "title_prefix": "RunEnv",
-#                "ob_processor": "bodyspeed",  # 1st order system
-                "ob_processor": "2ndorder",
+                "ob_processor": "bodyspeed",  # 1st order system
+                "prioritized": True
                 }
         train(config, args.trial_dir, args.visualize)
     else:

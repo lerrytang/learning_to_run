@@ -6,6 +6,9 @@ from keras.initializers import VarianceScaling, RandomUniform
 from keras.optimizers import Adam
 import keras.backend as K
 import numpy as np
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def actor_loss(y_true, y_pred):
@@ -37,6 +40,7 @@ class DDPG:
         self.act_dim = (real_act_dim, )
         self.act_high = self.env.action_space.high[:real_act_dim]
         self.act_low = self.env.action_space.low[:real_act_dim]
+
         self.memory = memory
         self.rand_process = rand_process
 
@@ -181,35 +185,51 @@ class DDPG:
     # ==================================================== #
     #          Traing Models                               #
     # ==================================================== #
+
+    def _get_td_error(self, ob0, action, reward, ob1, done):
+        future_action, future_q = self.target_actor.predict_on_batch(ob1)
+        future_q = future_q.squeeze()
+        target = reward + self.gamma * future_q * (1 - done)
+        estimate = self.critic.predict_on_batch([ob0, action]).squeeze()
+        res = np.abs(target-estimate)
+        return res
     
-    def _train_critic(self, ob0, action, reward, ob1, done):
+    def _train_critic(self, ob0, action, reward, ob1, done, w=None):
         future_action, future_q = self.target_actor.predict_on_batch(ob1)
         future_q = future_q.squeeze()
         reward += self.gamma * future_q * (1 - done)
         hist = self.critic.fit([ob0, action], reward,
-                batch_size=self.batch_size, verbose=0)
+                batch_size=self.batch_size, sample_weight=w, verbose=0)
         self._copy_critic_weights(self.critic, self.actor)
         return hist
     
-    def _train_actor(self, ob0, action, reward, ob1, done):
+    def _train_actor(self, ob0, action, reward, ob1, done, w=None):
+        if w is not None:
+            w = [w] * 2
+
         # the output signals are just dummy
         hist = self.actor.fit([ob0], [reward, reward],
-                batch_size=self.batch_size, verbose=0)
+                batch_size=self.batch_size, sample_weight=w, verbose=0)
         return hist
     
     def train_actor_critic(self):
-        ob0, action, reward, ob1, done = self.memory.sample(self.batch_size)
+        # sample from replay buffer
+        (ob0, action, reward, ob1, done), weights, indices = self.memory.sample(self.batch_size)
+
         if ob0 is None:
             return 0, 0
         else:
+            # update sample priority (if memory is not prioritized, this does nothing)
+            abs_td_error = self._get_td_error(ob0, action, reward, ob1, done)
+            self.memory.update_priority(indices, abs_td_error)
             # train critic
-            critic_hist = self._train_critic(ob0, action, reward, ob1, done)
+            critic_hist = self._train_critic(ob0, action, reward, ob1, done, weights)
             # DEBUG
             aa, q_actor = self.actor.predict_on_batch([ob0])
             q_critic = self.critic.predict_on_batch([ob0, aa])
             assert np.allclose(q_actor, q_critic)
             # train actor
-            actor_hist = self._train_actor(ob0, action, reward, ob1, done)
+            actor_hist = self._train_actor(ob0, action, reward, ob1, done, weights)
             # soft update weights
             self._copy_critic_weights(self.critic, self.target_actor, tau=self.tau)
             self._copy_actor_weights(self.actor, self.target_actor, tau=self.tau)
