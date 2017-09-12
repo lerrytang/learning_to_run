@@ -50,8 +50,12 @@ def prepare_for_logging(name, create_folder=True):
 
 
 def create_rand_process(env, config):
+    if "jump" in config and config["jump"]:
+        act_dim = env.action_space.shape[0] / 2
+    else:
+        act_dim = env.action_space.shape[0]
     return OUP(
-            action_dim=env.action_space.shape[0],
+            action_dim=act_dim,
             theta=config["theta"],
             sigma_init=config["sigma_init"],
             sigma_min=config["sigma_min"],
@@ -59,9 +63,13 @@ def create_rand_process(env, config):
 
 
 def create_memory(env, config):
+    if "jump" in config and config["jump"]:
+        act_dim = env.action_space.shape[0] / 2
+    else:
+        act_dim = env.action_space.shape[0]
     return RB(
             ob_dim=(env.observation_space.shape[0]+config["ob_aug_dim"],),
-            act_dim=env.action_space.shape,
+            act_dim=(act_dim, ),
             capacity=config["memory_capacity"])
 
 
@@ -242,7 +250,7 @@ def test(trial_dir, test_episode, visual_flag, submit_flag):
         logger.info("avg_reward={}".format(np.mean(rewards))) 
 
 
-def submit(agent, logger):
+def submit(agent, logger, jump=False):
     token = None
     assert token is not None, "You need to provide your token to submit()"
     # Settings
@@ -277,8 +285,10 @@ def submit(agent, logger):
         observation = np.reshape(new_ob, [1, -1])
         action, _ = agent.actor.predict(observation)
         action = np.clip(action, agent.act_low, agent.act_high)
-        action = action.squeeze().tolist()
-        [new_ob, reward, done, info] = client.env_step(action, True)
+        act_to_apply = action.squeeze()
+        if self.jump:
+            act_to_apply = np.tile(act_to_apply, 2)
+        [new_ob, reward, done, info] = client.env_step(act_to_apply.tolist(), True)
 
         episode_steps += 1
         episode_reward += reward
@@ -313,6 +323,7 @@ if __name__ == "__main__":
 
     if args.train:
         config = {
+                "jump": True,
                 "save_snapshot_every": 3,
                 "gamma": 0.99,
                 "tau": 1e-3,
