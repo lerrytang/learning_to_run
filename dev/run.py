@@ -313,19 +313,21 @@ if __name__ == "__main__":
 
     if args.train:
         config = {
-                "save_snapshot_every": 3,
+#                "save_snapshot_every": 3,
+                "save_prob": 0.5,
+                "num_train": 2,
                 "gamma": 0.99,
                 "tau": 1e-3,
                 "batch_size": 128,
                 "actor_l2": 1e-6,
                 "actor_lr": 1e-4,
                 "critic_l2": 1e-6,
-                "critic_lr": 2e-4,
+                "critic_lr": 3.25e-4,
                 "merge_at_layer": 1,
                 "theta": 0.15,
                 "sigma_init": 0.2,
                 "sigma_min": 0.05,
-                "total_episodes": 10,
+                "total_episodes": 50000,
                 "max_steps": 1000,
                 "memory_capacity": 1000000,
                 "annealing_steps": 2000000,
@@ -333,8 +335,8 @@ if __name__ == "__main__":
                 "critic_hiddens": [128, 128, 64, 64],
                 "scale_action": scale_action,
                 "title_prefix": "RunEnv",
-#                "ob_processor": "bodyspeed",  # 1st order system
-                "ob_processor": "2ndorder",
+                "ob_processor": "bodyspeed",  # 1st order system
+#                "ob_processor": "2ndorder",
                 }
         train(config, args.trial_dir, args.visualize)
     else:

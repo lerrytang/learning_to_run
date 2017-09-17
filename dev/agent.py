@@ -32,6 +32,10 @@ class DDPG:
         self.memory = memory
         self.rand_process = rand_process
 
+        # training strategy related
+        self.num_train = config["num_train"] if "num_train" in config else 1
+        self.save_prob = config["save_prob"] if "save_prob" in config else 1.0
+
         # learning related parameters
         self.batch_size = config["batch_size"] if "batch_size" in config else 64
         self.tau = config["tau"] if "tau" in config else 1e-3
@@ -258,20 +262,22 @@ class DDPG:
             noisy_action_hist = self.append_hist(noisy_action_hist, action)
             new_ob, reward, done, info = self.env.step(action.squeeze())
 
-            # store experience
-            assert np.all((action>=self.act_low) & (action<=self.act_high))
-            self.memory.store(observation, action, reward, done)
-
-            # train
-            loss, qval = self.train_actor_critic()
-            if loss is not None:
-                episode_losses.append(loss)
-            if qval is not None:
-                episode_qval.append(qval)
-
             # bookkeeping
             episode_reward += reward
             episode_steps += 1
+
+            # store experience
+            if np.random.rand() < self.save_prob:
+                assert np.all((action>=self.act_low) & (action<=self.act_high))
+                self.memory.store(observation, action, reward, done)
+
+            # train
+            for _ in xrange(self.num_train):
+                loss, qval = self.train_actor_critic()
+                if loss is not None:
+                    episode_losses.append(loss)
+                if qval is not None:
+                    episode_qval.append(qval)
 
             # on episode end
             if done or episode_steps>=max_steps:
