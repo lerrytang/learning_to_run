@@ -87,12 +87,13 @@ class DDPG:
         # critic input part
         if self.use_bn:
             x = BatchNormalization(trainable=trainable,
+                    center=False, scale=False,
                     name="critic_bn_input")(ob_input)
         else:
             x = ob_input
         if self.merge_at_layer == 0:
             x = Concatenate(name="combined_input")([x, act_input])
-#            include_bn = False
+            include_bn = False
 
         # critic hidden part
         for i, num_hiddens in enumerate(critic_hiddens):
@@ -100,13 +101,14 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.critic_l2), name="critic_fc{}".format(i+1))(x)
-#            if self.use_bn and include_bn:
-#                x = BatchNormalization(trainable=trainable,
-#                        name="critic_bn{}".format(i+1))(x)
             if lrelu>0:
                 x = LeakyReLU(name="critic_lrelu{}".format(i+1))(x)
             else:
                 x = Activation("relu", name="critic_relu{}".format(i+1))(x)
+            if self.use_bn and include_bn:
+                x = BatchNormalization(trainable=trainable,
+                        center=False, scale=False,
+                        name="critic_bn{}".format(i+1))(x)
             if self.merge_at_layer == i+1:
                 x = Concatenate(name="combined_input")([x, act_input])
                 include_bn = False
@@ -123,6 +125,7 @@ class DDPG:
         ob_input = Input(shape=self.ob_dim, name="ob_input")
         if self.use_bn:
             x = BatchNormalization(trainable=trainable,
+                    center=False, scale=False,
                     name="actor_bn_input")(ob_input)
         else:
             x = ob_input
@@ -133,13 +136,14 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.actor_l2), name="actor_fc{}".format(i+1))(x)
-#            if self.use_bn:
-#                x = BatchNormalization(trainable=trainable,
-#                        name="actor_bn{}".format(i+1))(x)
             if lrelu>0:
                 x = LeakyReLU(name="actor_lrelu{}".format(i+1))(x)
             else:
                 x = Activation("relu", name="actor_relu{}".format(i+1))(x)
+            if self.use_bn:
+                x = BatchNormalization(trainable=trainable,
+                        center=False, scale=False,
+                        name="actor_bn{}".format(i+1))(x)
 
         # action output
         x = Dense(self.act_dim[0], activation="tanh", trainable=trainable,
@@ -193,8 +197,8 @@ class DDPG:
         for l in actor_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, t)
+#            t = 1.0 if "_bn_input" in l else tau
+            self._copy_layer_weights(src_layer, tar_layer, tau)
     
     def _copy_critic_weights(self, src_model, tar_model, tau=1.0):
         critic_layers = ["qval"]
@@ -202,8 +206,8 @@ class DDPG:
         for l in critic_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, t)
+#            t = 1.0 if "_bn_input" in l else tau
+            self._copy_layer_weights(src_layer, tar_layer, tau)
     
     # ==================================================== #
     #          Traing Models                               #

@@ -57,12 +57,12 @@ class ReplayBuffer:
                 insert_index=self._insert_index)
 
     def load_memory(self, path):
-        npzfile = np.load(path)
-        self._capacity = npzfile["capacity"]
-        self._observation_mem = npzfile["observation_mem"]
-        self._action_mem = npzfile["action_mem"]
-        self._reward_mem = npzfile["reward_mem"]
-        self._done_mem = npzfile["done_mem"]
-        self.size = npzfile["size"]
-        self._insert_index = npzfile["insert_index"]
+        with np.load(path) as npzfile:
+            self._capacity = int(npzfile["capacity"])
+            self._observation_mem = npzfile["observation_mem"]
+            self._action_mem = npzfile["action_mem"]
+            self._reward_mem = npzfile["reward_mem"]
+            self._done_mem = npzfile["done_mem"]
+            self.size = int(npzfile["size"])
+            self._insert_index = int(npzfile["insert_index"])
         
