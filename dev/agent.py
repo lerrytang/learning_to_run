@@ -45,6 +45,7 @@ class DDPG:
 
         # learning related parameters
         self.batch_size = config["batch_size"] if "batch_size" in config else 64
+        self.use_bn = config["use_bn"] if "use_bn" in config else False
         self.memory_warmup = config["memory_warmup"] if "memory_warmup" in config else self.batch_size
         self.tau = config["tau"] if "tau" in config else 1e-3
         self.gamma = config["gamma"] if "gamma" in config else 0.99
@@ -84,8 +85,11 @@ class DDPG:
         include_bn = True
 
         # critic input part
-        x = BatchNormalization(trainable=trainable,
-                name="critic_bn_input")(ob_input)
+        if self.use_bn:
+            x = BatchNormalization(trainable=trainable,
+                    name="critic_bn_input")(ob_input)
+        else:
+            x = ob_input
         if self.merge_at_layer == 0:
             x = Concatenate(name="combined_input")([x, act_input])
             include_bn = False
@@ -96,7 +100,7 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.critic_l2), name="critic_fc{}".format(i+1))(x)
-            if include_bn:
+            if self.use_bn and include_bn:
                 x = BatchNormalization(trainable=trainable,
                         name="critic_bn{}".format(i+1))(x)
             if lrelu>0:
@@ -117,9 +121,11 @@ class DDPG:
     def create_actor(self, actor_hiddens, scale_action, critic_hiddens, lrelu, trainable=True):
         # actor input part
         ob_input = Input(shape=self.ob_dim, name="ob_input")
-        x = BatchNormalization(trainable=trainable,
-                name="actor_bn_input")(ob_input)
-#        x = ob_input
+        if self.use_bn:
+            x = BatchNormalization(trainable=trainable,
+                    name="actor_bn_input")(ob_input)
+        else:
+            x = ob_input
         
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
@@ -127,8 +133,9 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.actor_l2), name="actor_fc{}".format(i+1))(x)
-            x = BatchNormalization(trainable=trainable,
-                    name="actor_bn{}".format(i+1))(x)
+            if self.use_bn:
+                x = BatchNormalization(trainable=trainable,
+                        name="actor_bn{}".format(i+1))(x)
             if lrelu>0:
                 x = LeakyReLU(name="actor_lrelu{}".format(i+1))(x)
             else:

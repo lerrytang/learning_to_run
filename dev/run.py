@@ -323,6 +323,7 @@ if __name__ == "__main__":
 
     if args.train:
         config = {
+                "use_bn": False,
                 "save_snapshot_every": 500,
                 "num_train": 2,
                 "jump": False,
