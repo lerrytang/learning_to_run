@@ -5,6 +5,7 @@ import numpy as np
 #logger.setLevel(logging.INFO)
 
 
+PELVIS_IX = 1
 MAX_NUM_OBSTACLE = 3
 NORMALIZE_INDICE = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
 
@@ -34,7 +35,7 @@ class BodySpeedAugmentor(ObservationProcessor):
 
         # deal with obstacles
         if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
-            pelvis_x = ob[1]
+            pelvis_x = ob[PELVIS_IX]
             ob_x = ob[-3] + pelvis_x
             self.obstacle_pos.add(ob_x)
         else:
@@ -51,7 +52,7 @@ class BodySpeedAugmentor(ObservationProcessor):
 
         # normalize x
         res = np.asarray(res)
-        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
+        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
         res = res.tolist()
 
 #        logger.info("observation:")
@@ -102,7 +103,7 @@ class SecondOrderAugmentor(ObservationProcessor):
 
         # deal with obstacles
         if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
-            pelvis_x = ob[1]
+            pelvis_x = ob[PELVIS_IX]
             ob_x = ob[-3] + pelvis_x
             self.obstacle_pos.add(ob_x)
         else:
@@ -121,7 +122,7 @@ class SecondOrderAugmentor(ObservationProcessor):
 
         # normalize x
         res = np.asarray(res)
-        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
+        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
         res = res.tolist()
 
         return res

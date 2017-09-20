@@ -1,5 +1,5 @@
 from keras.models import Model
-from keras.layers import Input, Dense, Concatenate, Lambda, Activation
+from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.regularizers import l2
 from keras.initializers import VarianceScaling, RandomUniform
@@ -8,12 +8,12 @@ import keras.backend as K
 import numpy as np
 
 
-def actor_loss(y_true, y_pred):
+def minus_Q(y_true, y_pred):
     return -K.mean(y_pred)
 
 
-def zero_loss(y_true, y_pred):
-    return K.mean(y_pred*0, axis=-1)
+def action_sqr(y_true, y_pred):
+    return K.mean(K.sum(K.square(y_pred), axis=-1))
 
     
 class DDPG:
@@ -42,13 +42,14 @@ class DDPG:
 
         # training strategy related
         self.num_train = config["num_train"] if "num_train" in config else 1
-        self.save_prob = config["save_prob"] if "save_prob" in config else 1.0
 
         # learning related parameters
         self.batch_size = config["batch_size"] if "batch_size" in config else 64
+        self.memory_warmup = config["memory_warmup"] if "batch_size" in config else self.batch_size
         self.tau = config["tau"] if "tau" in config else 1e-3
         self.gamma = config["gamma"] if "gamma" in config else 0.99
         self.actor_l2 = config["actor_l2"] if "actor_l2" in config else 0
+        self.actor_l2_action = config["actor_l2_action"] if "actor_l2_action" in config else 1e-6
         self.critic_l2 = config["critic_l2"] if "critic_l2" in config else 1e-2
         self.actor_lr = config["actor_lr"] if "actor_lr" in config else 1e-3
         self.critic_lr = config["critic_lr"] if "critic_lr" in config else 1e-4
@@ -68,9 +69,9 @@ class DDPG:
         """
 
         # build models
-        self.actor, self.num_alayers = self.create_actor(actor_hiddens, scale_action, critic_hiddens, lrelu)
-        self.target_actor, _ = self.create_actor(actor_hiddens, scale_action, critic_hiddens, lrelu, trainable=False)
-        self.critic, self.num_clayers = self.create_critic(critic_hiddens, lrelu)
+        self.actor = self.create_actor(actor_hiddens, scale_action, critic_hiddens, lrelu)
+        self.target_actor = self.create_actor(actor_hiddens, scale_action, critic_hiddens, lrelu, trainable=False)
+        self.critic = self.create_critic(critic_hiddens, lrelu)
 
         # hard copy weights
         self._copy_critic_weights(self.critic, self.actor)
@@ -80,12 +81,14 @@ class DDPG:
     def _build_critic_part(self, ob_input, act_input, critic_hiddens, lrelu, trainable=True):
 
         assert self.merge_at_layer<=len(critic_hiddens)
+        include_bn = True
 
         # critic input part
+        x = BatchNormalization(trainable=trainable,
+                name="critic_bn_input")(ob_input)
         if self.merge_at_layer == 0:
-            x = Concatenate(name="combined_input")([ob_input, act_input])
-        else:
-            x = ob_input
+            x = Concatenate(name="combined_input")([x, act_input])
+            include_bn = False
 
         # critic hidden part
         for i, num_hiddens in enumerate(critic_hiddens):
@@ -93,12 +96,16 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.critic_l2), name="critic_fc{}".format(i+1))(x)
+            if include_bn:
+                x = BatchNormalization(trainable=trainable,
+                        name="critic_bn{}".format(i+1))(x)
             if lrelu>0:
                 x = LeakyReLU(name="critic_lrelu{}".format(i+1))(x)
             else:
                 x = Activation("relu", name="critic_relu{}".format(i+1))(x)
             if self.merge_at_layer == i+1:
                 x = Concatenate(name="combined_input")([x, act_input])
+                include_bn = False
 
         # critic output
         qval = Dense(1, activation="linear", trainable=trainable,
@@ -110,7 +117,9 @@ class DDPG:
     def create_actor(self, actor_hiddens, scale_action, critic_hiddens, lrelu, trainable=True):
         # actor input part
         ob_input = Input(shape=self.ob_dim, name="ob_input")
-        x = ob_input
+        x = BatchNormalization(trainable=trainable,
+                name="actor_bn_input")(ob_input)
+#        x = ob_input
         
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
@@ -118,6 +127,8 @@ class DDPG:
                     kernel_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     bias_initializer=VarianceScaling(scale=1.0/3, distribution="uniform"),
                     kernel_regularizer=l2(self.actor_l2), name="actor_fc{}".format(i+1))(x)
+            x = BatchNormalization(trainable=trainable,
+                    name="actor_bn{}".format(i+1))(x)
             if lrelu>0:
                 x = LeakyReLU(name="actor_lrelu{}".format(i+1))(x)
             else:
@@ -138,9 +149,10 @@ class DDPG:
         
         # compile model
         actor = Model(inputs=[ob_input], outputs=[action, qval])
-        optimizer = Adam(lr=self.actor_lr)
-        actor.compile(optimizer=optimizer, loss=[zero_loss, actor_loss], loss_weights=[0, 1])
-        return actor, len(actor_hiddens)
+        actor.compile(optimizer=Adam(lr=self.actor_lr),
+                loss=[action_sqr, minus_Q],
+                loss_weights=[self.actor_l2_action, 1])
+        return actor
     
     def create_critic(self, critic_hiddens, lrelu, trainable=True):
         # critic input part
@@ -154,7 +166,7 @@ class DDPG:
         critic = Model(inputs=[ob_input, act_input], outputs=[qval])
         optimizer = Adam(lr=self.critic_lr)
         critic.compile(optimizer=optimizer, loss="mse")
-        return critic, len(critic_hiddens)
+        return critic
         
     # ==================================================== #
     #           Network Weights Copy                       #
@@ -169,14 +181,16 @@ class DDPG:
         tar_layer.set_weights(tar_weights)
     
     def _copy_actor_weights(self, src_model, tar_model, tau=1.0):
-        actor_layers = ["actor_fc" + str(i+1) for i in xrange(self.num_alayers)] + ["action"]
+        actor_layers = ["action"]
+        actor_layers += [l.name for l in self.actor.layers if "actor_" in l.name]
         for l in actor_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
             self._copy_layer_weights(src_layer, tar_layer, tau)
     
     def _copy_critic_weights(self, src_model, tar_model, tau=1.0):
-        critic_layers = ["critic_fc" + str(i+1) for i in xrange(self.num_clayers)] + ["qval"]
+        critic_layers = ["qval"]
+        critic_layers += [l.name for l in self.critic.layers if "critic_" in l.name]
         for l in critic_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
@@ -191,7 +205,9 @@ class DDPG:
         future_q = future_q.squeeze()
         reward += self.gamma * future_q * (1 - done)
         hist = self.critic.fit([ob0, action], reward,
-                batch_size=self.batch_size, verbose=0)
+                batch_size=self.batch_size,
+                epochs=self.num_train,
+                verbose=0)
         self._copy_critic_weights(self.critic, self.actor)
         return hist
     
@@ -202,10 +218,10 @@ class DDPG:
         return hist
     
     def train_actor_critic(self):
-        ob0, action, reward, ob1, done = self.memory.sample(self.batch_size)
-        if ob0 is None:
+        if self.memory.size < self.memory_warmup:
             return 0, 0
         else:
+            ob0, action, reward, ob1, done = self.memory.sample(self.batch_size)
             # train critic
             critic_hist = self._train_critic(ob0, action, reward, ob1, done)
             # DEBUG
@@ -278,17 +294,15 @@ class DDPG:
             episode_steps += 1
 
             # store experience
-            if np.random.rand() < self.save_prob:
-                assert np.all((action>=self.act_low) & (action<=self.act_high))
-                self.memory.store(observation, action, reward, done)
+            assert np.all((action>=self.act_low) & (action<=self.act_high))
+            self.memory.store(observation, action, reward, done)
 
             # train
-            for _ in xrange(self.num_train):
-                loss, qval = self.train_actor_critic()
-                if loss is not None:
-                    episode_losses.append(loss)
-                if qval is not None:
-                    episode_qval.append(qval)
+            loss, qval = self.train_actor_critic()
+            if loss is not None:
+                episode_losses.append(loss)
+            if qval is not None:
+                episode_qval.append(qval)
 
             # on episode end
             if done or episode_steps>=max_steps:
