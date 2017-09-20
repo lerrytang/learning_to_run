@@ -45,7 +45,7 @@ class DDPG:
 
         # learning related parameters
         self.batch_size = config["batch_size"] if "batch_size" in config else 64
-        self.memory_warmup = config["memory_warmup"] if "batch_size" in config else self.batch_size
+        self.memory_warmup = config["memory_warmup"] if "memory_warmup" in config else self.batch_size
         self.tau = config["tau"] if "tau" in config else 1e-3
         self.gamma = config["gamma"] if "gamma" in config else 0.99
         self.actor_l2 = config["actor_l2"] if "actor_l2" in config else 0
