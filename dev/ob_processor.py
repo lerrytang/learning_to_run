@@ -52,7 +52,8 @@ class BodySpeedAugmentor(ObservationProcessor):
 
         # normalize x
         res = np.asarray(res)
-        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
+#        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
+        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
         res = res.tolist()
 
 #        logger.info("observation:")
@@ -122,7 +123,8 @@ class SecondOrderAugmentor(ObservationProcessor):
 
         # normalize x
         res = np.asarray(res)
-        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
+#        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
+        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
         res = res.tolist()
 
         return res
