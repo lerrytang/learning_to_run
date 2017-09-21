@@ -7,7 +7,8 @@ import numpy as np
 def env_worker(env_maker, conn, n_worker_envs):
     envs = []
     for _ in range(n_worker_envs):
-        envs.append(env_maker.make())
+        # envs.append(env_maker.make())
+        envs.append(env_maker())
     while True:
         command, data = conn.recv()
         try:

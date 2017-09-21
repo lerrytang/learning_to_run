@@ -11,6 +11,8 @@ import scipy.optimize
 
 from .chainer_utils import *
 
+import gym
+
 
 class Gaussian(object):
     def __init__(self, means, log_stds):
@@ -44,6 +46,14 @@ class Gaussian(object):
         return - F.sum(self.log_stds, axis=-1) - \
                0.5 * F.sum(F.square(zs), axis=-1) - \
                0.5 * self.means.shape[-1] * np.log(2 * np.pi)
+
+    def likelihood_ratio(self, other, a):
+        """
+        Compute p_self(a) / p_other(a)
+        """
+        logli = self.logli(a)
+        other_logli = other.logli(a)
+        return F.exp(logli - other_logli)
 
     def kl_div(self, other):
         """

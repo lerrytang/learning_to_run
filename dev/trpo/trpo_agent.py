@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
-import numpy as np
+import sys, time
+from tqdm import tqdm
+
 import multiprocessing as mp
+import gym
 
-import chainer
-import chainer.functions as F
+from .models import *
+from .chainer_utils import *
+from .env_utils import EnvPool
 
-from .chainer_utils import get_flat_params, set_flat_params, get_flat_grad, cg
-from .models import GaussianMLPPolicy, MLPBaseline
 # import ipdb
 
 
@@ -69,16 +71,9 @@ def linesearch(f, x0, dx, expected_improvement, y0=None, backtrack_ratio=0.8, ma
             y = f(x)
             actual_improvement = y0 - y
             if actual_improvement / (expected_improvement * ratio) >= accept_ratio:
-                # logger.logkv("ExpectedImprovement",
-                #              expected_improvement * ratio)
-                # logger.logkv("ActualImprovement", actual_improvement)
-                # logger.logkv("ImprovementRatio", actual_improvement /
-                #              (expected_improvement * ratio))
-                return x
-    # logger.logkv("ExpectedImprovement", expected_improvement)
-    # logger.logkv("ActualImprovement", 0.)
-    # logger.logkv("ImprovementRatio", 0.)
-    return x0
+                return x, expected_improvement * ratio, actual_improvement, actual_improvement / (
+                    expected_improvement * ratio)
+    return x0, expected_improvement, 0, 0
 
 
 class TRPO(object):
@@ -108,11 +103,12 @@ class TRPO(object):
     :param snapshot_saver: An object for saving snapshots.
     """
 
-    def __init__(self, env, env_maker, n_envs=mp.cpu_count(), last_iter=-1, n_iters=100,
+    def __init__(self, env, env_maker, logger, n_envs=mp.cpu_count(), last_iter=-1, n_iters=100,
                  batch_size=1000, discount=0.99, gae_lambda=0.97, step_size=0.01, use_linesearch=True,
                  kl_subsamp_ratio=1., snapshot_saver=None):
         self.env = env
         self.env_maker = env_maker
+        self.logger = logger
         self.n_envs = n_envs
         self.last_iter = last_iter
         self.n_iters = n_iters
@@ -142,7 +138,9 @@ class TRPO(object):
             hidden_nonlinearity=chainer.functions.tanh,
         )
 
-    def compute_cumulative_returns(self, rewards, baselines, discount):
+        self.name2val = dict()
+
+    def compute_cumulative_returns(self, rewards, baselines):
         # This method builds up the cumulative sum of discounted rewards for each time step:
         # R[t] = sum_{t'>=t} γ^(t'-t)*r_t'
         # Note that we use γ^(t'-t) instead of γ^t'. This gives us a biased gradient but lower variance
@@ -150,16 +148,16 @@ class TRPO(object):
         # Use the last baseline prediction to back up
         cum_return = baselines[-1]
         for reward in rewards[::-1]:
-            cum_return = cum_return * discount + reward
+            cum_return = cum_return * self.discount + reward
             returns.append(cum_return)
         return returns[::-1]
 
-    def compute_advantages(self, rewards, baselines, discount, gae_lambda):
+    def compute_advantages(self, rewards, baselines):
         # Given returns R_t and baselines b(s_t), compute (generalized) advantage estimate A_t
-        deltas = rewards + discount * baselines[1:] - baselines[:-1]
+        deltas = rewards + self.discount * baselines[1:] - baselines[:-1]
         advs = []
         cum_adv = 0
-        multiplier = discount * gae_lambda
+        multiplier = self.discount * self.gae_lambda
         for delta in deltas[::-1]:
             cum_adv = cum_adv * multiplier + delta
             advs.append(cum_adv)
@@ -177,8 +175,8 @@ class TRPO(object):
                 baselines[-1] = 0.
             # This is useful when fitting baselines. It uses the baseline prediction of the last state value to perform
             # Bellman backup if the trajectory is not finished.
-            traj['returns'] = self.compute_cumulative_returns(traj['rewards'], baselines, self.discount)
-            traj['advantages'] = self.compute_advantages(traj['rewards'], baselines, self.discount, self.gae_lambda)
+            traj['returns'] = self.compute_cumulative_returns(traj['rewards'], baselines)
+            traj['advantages'] = self.compute_advantages(traj['rewards'], baselines)
             traj['baselines'] = baselines[:-1]
 
         # First, we compute a flattened list of observations, actions, and advantages
@@ -225,10 +223,7 @@ class TRPO(object):
         else:
             obs = env_pool.reset()
 
-        # if logger.get_level() <= logger.INFO:
-        #     progbar = tqdm(total=num_samples)
-        # else:
-        #     progbar = None
+        progbar = tqdm(total=self.batch_size)
 
         while num_collected < self.batch_size:
             actions, dists = self.policy.get_actions(obs)
@@ -264,11 +259,12 @@ class TRPO(object):
                     partial_trajs[idx] = None
             obs = next_obs
             num_collected += env_pool.n_envs
-        # if progbar is not None:
-        #         progbar.update(env_pool.n_envs)
-        #
-        # if progbar is not None:
-        #     progbar.close()
+
+            if progbar is not None:
+                progbar.update(env_pool.n_envs)
+
+        if progbar is not None:
+            progbar.close()
 
         for idx in range(env_pool.n_envs):
             if partial_trajs[idx] is not None:
@@ -293,18 +289,19 @@ class TRPO(object):
     # def collect_samples(self, batch_size):
     def learn(self):
 
-        # logger.info("Starting env pool asdasdfasdfasdf")
+        self.logger.info("Starting env pool asdasdfasdfasdf")
 
         with EnvPool(self.env_maker, n_envs=self.n_envs) as env_pool:
             for iter in range(self.last_iter + 1, self.n_iters):
-                # logger.info("Starting iteration {}".format(iter))
-                # logger.logkv('Iteration', iter)
-                # logger.info("Start collecting samples")
+                self.logger.info("Starting iteration {}".format(iter))
+                self.logkv('Iteration', iter)
+                self.logger.info('Iteration {}'.format(iter))
+                self.logger.info("Start collecting samples")
                 trajs = self.parallel_collect_samples(env_pool)
-                # logger.info("Computing input variables for policy optimization")
+                self.logger.info("Computing input variables for policy optimization")
                 all_obs, all_acts, all_advs, all_dists = self.compute_pg_vars(trajs)
 
-                # logger.info("Performing policy update")
+                self.logger.info("Performing policy update")
 
                 # subsample for kl divergence computation
                 mask = np.zeros(len(all_obs), dtype=np.bool)
@@ -361,7 +358,7 @@ class TRPO(object):
 
                 # Step 1: compute gradient in Euclidean space
 
-                # logger.info("Computing gradient in Euclidean space")
+                self.logger.info("Computing gradient in Euclidean space")
 
                 self.policy.cleargrads()
 
@@ -377,7 +374,7 @@ class TRPO(object):
 
                 # Step 2: Perform conjugate gradient to compute approximate natural gradient
 
-                # logger.info("Computing approximate natural gradient using conjugate gradient algorithm")
+                self.logger.info("Computing approximate natural gradient using conjugate gradient algorithm")
 
                 self.policy.cleargrads()
 
@@ -409,7 +406,7 @@ class TRPO(object):
                 if self.use_linesearch:
                     # Step 4: Perform line search
 
-                    # logger.info("Performing line search")
+                    self.logger.info("Performing line search")
 
                     expected_improvement = flat_grad.dot(descent_step)
 
@@ -419,7 +416,7 @@ class TRPO(object):
                             surr_loss, kl = f_surr_loss_kl()
                         return surr_loss.data + 1e100 * max(kl.data - self.step_size, 0.)
 
-                    new_params = linesearch(
+                    new_params, expected_improvement, actual_improvement, improvement_ratio = linesearch(
                         f_barrier,
                         x0=cur_params,
                         dx=descent_step,
@@ -427,27 +424,34 @@ class TRPO(object):
                         expected_improvement=expected_improvement
                     )
 
+                    self.logkv("ExpectedImprovement", expected_improvement)
+                    self.logkv("ActualImprovement", actual_improvement)
+                    self.logkv("ImprovementRatio", improvement_ratio)
+
                 else:
                     new_params = cur_params - descent_step
 
                 set_flat_params(self.policy, new_params)
 
-                # logger.info("Updating baseline")
+                self.logger.info("Updating baseline")
                 self.baseline.update(trajs)
 
                 # log statistics
-                # logger.info("Computing logging information")
+                self.logger.info("Computing logging information")
                 with chainer.no_backprop_mode():
                     mean_kl = f_kl().data
 
-                # logger.logkv('MeanKL', mean_kl)
-                # log_action_distribution_statistics(all_dists)
-                # log_reward_statistics(env)
-                # log_baseline_statistics(trajs)
-                # logger.dumpkvs()
+                self.logkv('MeanKL', mean_kl)
+                self.log_action_distribution_statistics(all_dists)
+                self.log_reward_statistics(self.env)
+                self.log_baseline_statistics(trajs)
+                self.dumpkvs()
+
+                # import ipdb
+                # ipdb.set_trace()
 
                 if self.snapshot_saver is not None:
-                    # logger.info("Saving snapshot")
+                    self.logger.info("Saving snapshot")
                     self.snapshot_saver.save_state(
                         iter,
                         dict(
@@ -468,3 +472,98 @@ class TRPO(object):
                             )
                         )
                     )
+
+    def logkv(self, key, val):
+        self.name2val[key] = val
+
+    def dumpkvs(self):
+        # Create strings for printing
+        def _truncate(s):
+            return s[:20] + '...' if len(s) > 23 else s
+
+        key2str = OrderedDict()
+        for (key, val) in self.name2val.items():
+            valstr = '%-8.5g' % (val,) if hasattr(val, '__float__') else val
+            key2str[_truncate(key)] = _truncate(valstr)
+
+        # Find max widths
+        keywidth = max(map(len, key2str.keys()))
+        valwidth = max(map(len, key2str.values()))
+
+        # Write out the data
+        dashes = '-' * (keywidth + valwidth + 7)
+        lines = [dashes]
+        for (key, val) in key2str.items():
+            lines.append('| %s%s | %s%s |' % (
+                key,
+                ' ' * (keywidth - len(key)),
+                val,
+                ' ' * (valwidth - len(val)),
+            ))
+        lines.append(dashes)
+        self.logger.info('\n' + '\n'.join(lines))
+        self.name2val.clear()
+
+    def log_reward_statistics(self, env):
+        # keep unwrapping until we get the monitor
+        while not isinstance(env, gym.wrappers.Monitor):  # and not isinstance()
+            if not isinstance(env, gym.Wrapper):
+                assert False
+            env = env.env
+        # env.unwrapped
+        assert isinstance(env, gym.wrappers.Monitor)
+        all_stats = None
+        for _ in range(10):
+            try:
+                all_stats = gym.wrappers.monitoring.load_results(env.directory)
+            except:
+                time.sleep(1)
+                continue
+        if all_stats is not None:
+            episode_rewards = all_stats['episode_rewards']
+            episode_lengths = all_stats['episode_lengths']
+
+            recent_episode_rewards = episode_rewards[-100:]
+            recent_episode_lengths = episode_lengths[-100:]
+
+            if len(recent_episode_rewards) > 0:
+                self.logkv('AverageReturn', np.mean(recent_episode_rewards))
+                self.logkv('MinReturn', np.min(recent_episode_rewards))
+                self.logkv('MaxReturn', np.max(recent_episode_rewards))
+                self.logkv('StdReturn', np.std(recent_episode_rewards))
+                self.logkv('AverageEpisodeLength', np.mean(recent_episode_lengths))
+                self.logkv('MinEpisodeLength', np.min(recent_episode_lengths))
+                self.logkv('MaxEpisodeLength', np.max(recent_episode_lengths))
+                self.logkv('StdEpisodeLength', np.std(recent_episode_lengths))
+
+            self.logkv('TotalNEpisodes', len(episode_rewards))
+            self.logkv('TotalNSamples', np.sum(episode_lengths))
+
+    def log_baseline_statistics(self, trajs):
+        def explained_variance_1d(ypred, y):
+            assert y.ndim == 1 and ypred.ndim == 1
+            vary = np.var(y)
+            if np.isclose(vary, 0):
+                if np.var(ypred) > 1e-8:
+                    return 0
+                else:
+                    return 1
+            return 1 - np.var(y - ypred) / (vary + 1e-8)
+
+        # Specifically, compute the explained variance, defined as
+        baselines = np.concatenate([traj['baselines'] for traj in trajs])
+        returns = np.concatenate([traj['returns'] for traj in trajs])
+        self.logkv('ExplainedVariance',
+                   explained_variance_1d(baselines, returns))
+
+    def log_action_distribution_statistics(self, dists):
+        with chainer.no_backprop_mode():
+            entropy = F.mean(dists.entropy()).data
+            self.logkv('Entropy', entropy)
+            self.logkv('Perplexity', np.exp(entropy))
+            if isinstance(dists, Gaussian):
+                self.logkv('AveragePolicyStd', F.mean(
+                    F.exp(dists.log_stds)).data)
+                for idx in range(dists.log_stds.shape[-1]):
+                    self.logkv('AveragePolicyStd[{}]'.format(
+                        idx), F.mean(F.exp(dists.log_stds[..., idx])).data)
