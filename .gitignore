@@ -1,3 +1,7 @@
+keras/
+osim-rl/
+.idea/
+
 src*/
 trials*/
 *do_not_upload.py
