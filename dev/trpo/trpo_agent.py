@@ -138,7 +138,7 @@ class TRPO(object):
             hidden_nonlinearity=chainer.functions.tanh,
         )
 
-        self.name2val = dict()
+        self.name2val = OrderedDict()
 
     def compute_cumulative_returns(self, rewards, baselines):
         # This method builds up the cumulative sum of discounted rewards for each time step:

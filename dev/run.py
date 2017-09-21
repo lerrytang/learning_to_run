@@ -1,13 +1,9 @@
 from osim.http.client import Client
 from nipsenv import NIPS
-from keras.layers import Lambda
 from rand import OrnsteinUhlenbeckProcess as OUP
 from mem import ReplayBuffer as RB
-from agent import DDPG
-from trpo import TRPO
 from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
 import util
-
 import argparse
 import pickle
 from datetime import datetime
@@ -90,7 +86,7 @@ def train(config, trial_dir=None, visualize=False):
         logger.info("Loading config from {} ...".format(trial_dir))
         with open(os.path.join(trial_dir, "config.pk"), "rb") as f:
             config = pickle.load(f)
-    config["scale_action"] = scale_action
+    # config["scale_action"] = scale_action
     config["title_prefix"] = "RunEnv"
 
     # observation processor
@@ -199,9 +195,9 @@ def train(config, trial_dir=None, visualize=False):
         agent = TRPO(env,
                      env_maker,
                      logger,
-                     n_envs=4,
-                     batch_size=5000,
-                     n_iters=5000
+                     n_envs=config['n_envs'],
+                     batch_size=config['batch_size'],
+                     n_iters=config['n_iters']
                      )
         agent.learn()
 
@@ -343,44 +339,64 @@ def submit(agent, logger, jump=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train or test DDPG")
-    parser.add_argument('--train', dest='train', action='store_true', default=True)
+    # parser.add_argument('--train', dest='train', action='store_true', default=True)
     parser.add_argument('--test', dest='train', action='store_false', default=True)
+    parser.add_argument('--agent', default='TRPO', choices=['DDPG', 'TRPO'])
     parser.add_argument('--submit', dest='submit', action='store_true', default=False)
     parser.add_argument('--visualize', dest='visualize', action='store_true', default=False)
     parser.add_argument('--trial_dir', dest='trial_dir', default=None, type=str)
     parser.add_argument('--test_episode', dest='test_episode', default=0, type=int)
+
     args = parser.parse_args()
 
     if args.train:
-        config = {
-            "use_bn": True,
-            "save_snapshot_every": 500,
-            "num_train": 2,
-            "jump": False,
-            "gamma": 0.99,
-            "tau": 1e-3,
-            "batch_size": 128,
-            "actor_l2": 1e-6,
-            "actor_lr": 1e-4,
-            "actor_l2_action": 1e-5,
-            "critic_l2": 1e-6,
-            "critic_lr": 3.25e-4,
-            "merge_at_layer": 1,
-            "theta": 0.15,
-            "sigma_init": 0.1,
-            "sigma_min": 0.002,
-            "total_episodes": 50000,
-            "max_steps": 1000,
-            "memory_warmup": 1000,
-            "memory_capacity": 1000000,
-            "annealing_steps": 3000000,
-            "actor_hiddens": [128, 128, 64, 64],
-            "critic_hiddens": [128, 128, 64, 64],
-            "scale_action": scale_action,
-            "title_prefix": "RunEnv",
-            "ob_processor": "bodyspeed",  # 1st order system
-            #                "ob_processor": "2ndorder",
-        }
+        if args.agent == 'TRPO':
+            from trpo import TRPO
+
+            config = {
+                "agent": 'TRPO',
+                "batch_size": 5000,
+                "n_envs": 16,
+                "n_iters": 5000,
+            }
+
+        elif args.agent == 'DDPG':
+            from agent import DDPG
+            from keras.layers import Lambda
+
+            config = {
+                #                "save_snapshot_every": 3,
+                "agent": 'DDPG',
+                "use_bn": True,
+                "save_snapshot_every": 500,
+                "num_train": 2,
+                "jump": False,
+                "gamma": 0.99,
+                "tau": 1e-3,
+                "batch_size": 128,
+                "actor_l2": 1e-6,
+                "actor_lr": 1e-4,
+                "actor_l2_action": 1e-5,
+                "critic_l2": 1e-6,
+                "critic_lr": 3.25e-4,
+                "merge_at_layer": 1,
+                "theta": 0.15,
+                "sigma_init": 0.1,
+                "sigma_min": 0.002,
+                "total_episodes": 50000,
+                "max_steps": 1000,
+                "memory_warmup": 1000,
+                "memory_capacity": 1000000,
+                "annealing_steps": 3000000,
+                "actor_hiddens": [128, 128, 64, 64],
+                "critic_hiddens": [128, 128, 64, 64],
+                "scale_action": scale_action,
+                "title_prefix": "RunEnv",
+                "ob_processor": "bodyspeed",  # 1st order system
+                #                "ob_processor": "2ndorder",
+            }
+        else:
+            raise ValueError('invalid agent type')
 
         train(config, args.trial_dir, args.visualize)
     else:
