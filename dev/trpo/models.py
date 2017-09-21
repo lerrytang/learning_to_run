@@ -111,7 +111,10 @@ class Model(chainer.Chain):
 
         # self.obs_dim = flatten_dim(observation_space)
         # self.action_dim = flatten_dim(action_space)
-        self.obs_dim = observation_space.shape[0]
+        if isinstance(observation_space, tuple):
+            self.obs_dim = observation_space[0]
+        else:
+            self.obs_dim = observation_space.shape[0]
         self.action_dim = action_space.shape[0]
 
 
@@ -281,8 +284,12 @@ class NNFeatureBaseline(Baseline, NNFeatureModel):
                 low=np.append(observation_space.low, 0),
                 high=np.append(observation_space.high, 2 ** 32),
             )
+        elif isinstance(observation_space, tuple):
+            self.concat_time = True
+            obs_space = (observation_space[0] + 1, 0)
         else:
             obs_space = observation_space
+
         self.mixture_fraction = mixture_fraction
         super(NNFeatureBaseline, self).__init__(obs_space, action_space, env_spec, **kwargs)
         with self.init_scope():

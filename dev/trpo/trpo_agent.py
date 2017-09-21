@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
+
+import pandas as pd
+import matplotlib
+
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import sys, time
 from tqdm import tqdm
 
 import multiprocessing as mp
-import gym
-
+import os
 from .models import *
 from .chainer_utils import *
 from .env_utils import EnvPool
-
-# import ipdb
 
 
 def fvp(policy, f_kl, grad0, v, eps=1e-5, damping=1e-8):
@@ -103,38 +107,41 @@ class TRPO(object):
     :param snapshot_saver: An object for saving snapshots.
     """
 
-    def __init__(self, env, env_maker, logger, n_envs=mp.cpu_count(), last_iter=-1, n_iters=100,
+    def __init__(self, env, env_maker, logger, log_dir, ob_processor_maker, policy_hiddens, baseline_hiddens,
+                 n_envs=mp.cpu_count(), last_iter=-1, n_iters=100,
                  batch_size=1000, discount=0.99, gae_lambda=0.97, step_size=0.01, use_linesearch=True,
                  kl_subsamp_ratio=1., snapshot_saver=None):
         self.env = env
         self.env_maker = env_maker
         self.logger = logger
+        self.log_dir = log_dir
+        self.ob_processor_maker = ob_processor_maker
         self.n_envs = n_envs
         self.last_iter = last_iter
         self.n_iters = n_iters
 
         self.batch_size = batch_size
-
         self.discount = discount
         self.gae_lambda = gae_lambda
         self.step_size = step_size
         self.use_linesearch = use_linesearch
         self.kl_subsamp_ratio = kl_subsamp_ratio
 
-        self.snapshot_saver = snapshot_saver
-
+        # self.snapshot_saver = snapshot_saver
+        obs_space = (self.env.observation_space.shape[0] + ob_processor_maker().get_aug_dim(),)
+        # obs_space = self.env.observation_space
         self.policy = GaussianMLPPolicy(
-            observation_space=env.observation_space,
+            observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
-            hidden_sizes=(256, 64),
+            hidden_sizes=policy_hiddens,
             hidden_nonlinearity=chainer.functions.tanh,
         )
         self.baseline = MLPBaseline(
-            observation_space=env.observation_space,
+            observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
-            hidden_sizes=(256, 64),
+            hidden_sizes=baseline_hiddens,
             hidden_nonlinearity=chainer.functions.tanh,
         )
 
@@ -291,14 +298,14 @@ class TRPO(object):
 
         self.logger.info("Starting env pool asdasdfasdfasdf")
 
-        with EnvPool(self.env_maker, n_envs=self.n_envs) as env_pool:
+        with EnvPool(self.env_maker, self.ob_processor_maker, n_envs=self.n_envs) as env_pool:
             for iter in range(self.last_iter + 1, self.n_iters):
-                self.logger.info("Starting iteration {}".format(iter))
+                # self.logger.info("Starting iteration {}".format(iter))
                 self.logkv('Iteration', iter)
                 self.logger.info('Iteration {}'.format(iter))
                 self.logger.info("Start collecting samples")
                 trajs = self.parallel_collect_samples(env_pool)
-                self.logger.info("Computing input variables for policy optimization")
+                # self.logger.info("Computing input variables for policy optimization")
                 all_obs, all_acts, all_advs, all_dists = self.compute_pg_vars(trajs)
 
                 self.logger.info("Performing policy update")
@@ -358,7 +365,7 @@ class TRPO(object):
 
                 # Step 1: compute gradient in Euclidean space
 
-                self.logger.info("Computing gradient in Euclidean space")
+                # self.logger.info("Computing gradient in Euclidean space")
 
                 self.policy.cleargrads()
 
@@ -374,7 +381,7 @@ class TRPO(object):
 
                 # Step 2: Perform conjugate gradient to compute approximate natural gradient
 
-                self.logger.info("Computing approximate natural gradient using conjugate gradient algorithm")
+                # self.logger.info("Computing approximate natural gradient using conjugate gradient algorithm")
 
                 self.policy.cleargrads()
 
@@ -406,7 +413,7 @@ class TRPO(object):
                 if self.use_linesearch:
                     # Step 4: Perform line search
 
-                    self.logger.info("Performing line search")
+                    # self.logger.info("Performing line search")
 
                     expected_improvement = flat_grad.dot(descent_step)
 
@@ -433,11 +440,11 @@ class TRPO(object):
 
                 set_flat_params(self.policy, new_params)
 
-                self.logger.info("Updating baseline")
+                # self.logger.info("Updating baseline")
                 self.baseline.update(trajs)
 
                 # log statistics
-                self.logger.info("Computing logging information")
+                # self.logger.info("Computing logging information")
                 with chainer.no_backprop_mode():
                     mean_kl = f_kl().data
 
@@ -447,31 +454,39 @@ class TRPO(object):
                 self.log_baseline_statistics(trajs)
                 self.dumpkvs()
 
-                # import ipdb
-                # ipdb.set_trace()
+                if iter % 10 == 0:
+                    self.save_models()
 
-                if self.snapshot_saver is not None:
-                    self.logger.info("Saving snapshot")
-                    self.snapshot_saver.save_state(
-                        iter,
-                        dict(
-                            alg=self,
-                            alg_state=dict(
-                                env_maker=self.env_maker,
-                                policy=self.policy,
-                                baseline=self.baseline,
-                                n_envs=self.n_envs,
-                                last_iter=iter,
-                                n_iters=self.n_iters,
-                                batch_size=self.batch_size,
-                                discount=self.discount,
-                                gae_lambda=self.gae_lambda,
-                                step_size=self.step_size,
-                                use_linesearch=self.use_linesearch,
-                                kl_subsamp_ratio=self.kl_subsamp_ratio,
-                            )
-                        )
-                    )
+                    # if self.snapshot_saver is not None:
+                    #     self.logger.info("Saving snapshot")
+                    #     self.snapshot_saver.save_state(
+                    #         iter,
+                    #         dict(
+                    #             alg=self,
+                    #             alg_state=dict(
+                    #                 env_maker=self.env_maker,
+                    #                 policy=self.policy,
+                    #                 baseline=self.baseline,
+                    #                 n_envs=self.n_envs,
+                    #                 last_iter=iter,
+                    #                 n_iters=self.n_iters,
+                    #                 batch_size=self.batch_size,
+                    #                 discount=self.discount,
+                    #                 gae_lambda=self.gae_lambda,
+                    #                 step_size=self.step_size,
+                    #                 use_linesearch=self.use_linesearch,
+                    #                 kl_subsamp_ratio=self.kl_subsamp_ratio,
+                    #             )
+                    #         )
+                    #     )
+
+    def save_models(self):
+        chainer.serializers.save_npz(os.path.join(self.log_dir, 'policy.npz'), self.policy)
+        chainer.serializers.save_npz(os.path.join(self.log_dir, 'baseline.npz'), self.baseline)
+
+    def load_models(self, load_dir):
+        chainer.serializers.load_npz(os.path.join(load_dir, 'policy.npz'), self.policy)
+        chainer.serializers.load_npz(os.path.join(load_dir, 'baseline.npz'), self.baseline)
 
     def logkv(self, key, val):
         self.name2val[key] = val
@@ -503,6 +518,16 @@ class TRPO(object):
         lines.append(dashes)
         self.logger.info('\n' + '\n'.join(lines))
         self.name2val.clear()
+
+    def plot_stats(self, reward_hist, steps_hist):
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+        ix = np.arange(len(reward_hist)) + 1
+        pd.Series(reward_hist, index=ix).plot(ax=axes[0], color="blue")
+        axes[0].set_title("Rewards Per Episode")
+        pd.Series(steps_hist, index=ix).plot(ax=axes[1], color="red")
+        axes[1].set_title("Steps Per Episode")
+        plt.savefig(os.path.join(self.log_dir, 'stats.png'))
+        plt.close()
 
     def log_reward_statistics(self, env):
         # keep unwrapping until we get the monitor
@@ -539,6 +564,8 @@ class TRPO(object):
             self.logkv('TotalNEpisodes', len(episode_rewards))
             self.logkv('TotalNSamples', np.sum(episode_lengths))
 
+            self.plot_stats(episode_rewards, episode_lengths)
+
     def log_baseline_statistics(self, trajs):
         def explained_variance_1d(ypred, y):
             assert y.ndim == 1 and ypred.ndim == 1
@@ -564,6 +591,6 @@ class TRPO(object):
             if isinstance(dists, Gaussian):
                 self.logkv('AveragePolicyStd', F.mean(
                     F.exp(dists.log_stds)).data)
-                for idx in range(dists.log_stds.shape[-1]):
-                    self.logkv('AveragePolicyStd[{}]'.format(
-                        idx), F.mean(F.exp(dists.log_stds[..., idx])).data)
+                # for idx in range(dists.log_stds.shape[-1]):
+                #     self.logkv('AveragePolicyStd[{}]'.format(
+                #         idx), F.mean(F.exp(dists.log_stds[..., idx])).data)

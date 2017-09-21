@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from osim.http.client import Client
 from nipsenv import NIPS
 from rand import OrnsteinUhlenbeckProcess as OUP
@@ -36,7 +38,9 @@ def prepare_for_logging(name, create_folder=True):
     log_dir = None
     if create_folder:
         # create folder to save log and results
-        dirname = name + "_" + current_time
+        # TODO(並び替えづらかったのでこっちにしましたがいやだったらもどしてください)
+        # dirname = name + "_" + current_time
+        dirname = current_time + "_" + name
         log_dir = os.path.join("trials", dirname)
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
@@ -179,8 +183,25 @@ def train(config, trial_dir=None, visualize=False):
             max_steps=config["max_steps"])
         env.close()
 
+        # send result
+        img_file = os.path.join(log_dir, "train_stats.png")
+        util.plot_stats(reward_hist, steps_hist, img_file)
+        log_file = os.path.join(log_dir, "train.log")
+        title = log_dir + "_" + config["title_prefix"]
+        util.send_email(title, [img_file], [log_file], SMTP_SERVER)
+
     # TRPO
     elif config['agent'] == 'TRPO':
+
+        def ob_processor_maker():
+            if config["ob_processor"] == "normal":
+                return ObservationProcessor()
+            elif config["ob_processor"] == "2ndorder":
+                return SecondOrderAugmentor()
+            elif config['ob_processor'] == 'bodyspeed':
+                return BodySpeedAugmentor()
+            else:
+                raise ValueError('invalid ob processor type')
 
         def env_maker():
             env = NIPS(visualize=False)
@@ -195,18 +216,16 @@ def train(config, trial_dir=None, visualize=False):
         agent = TRPO(env,
                      env_maker,
                      logger,
+                     log_dir,
+                     ob_processor_maker,
+                     policy_hiddens=config['policy_hiddens'],
+                     baseline_hiddens=config['baseline_hiddens'],
                      n_envs=config['n_envs'],
                      batch_size=config['batch_size'],
-                     n_iters=config['n_iters']
+                     n_iters=config['n_iters'],
                      )
-        agent.learn()
 
-    # send result
-    img_file = os.path.join(log_dir, "train_stats.png")
-    util.plot_stats(reward_hist, steps_hist, img_file)
-    log_file = os.path.join(log_dir, "train.log")
-    title = log_dir + "_" + config["title_prefix"]
-    util.send_email(title, [img_file], [log_file], SMTP_SERVER)
+        agent.learn()
 
     logger.info("Finished (pid={}).".format(pid))
 
@@ -358,6 +377,9 @@ if __name__ == "__main__":
                 "batch_size": 5000,
                 "n_envs": 16,
                 "n_iters": 5000,
+                "ob_processor": "bodyspeed",
+                "policy_hiddens": [256, 128, 64],
+                "baseline_hiddens": [256, 128, 64],
             }
 
         elif args.agent == 'DDPG':

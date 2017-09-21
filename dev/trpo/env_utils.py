@@ -49,7 +49,7 @@ class EnvPool(object):
     per worker to be as flexible as possible.
     """
 
-    def __init__(self, env_maker, n_envs=mp.cpu_count(), n_parallel=mp.cpu_count()):
+    def __init__(self, env_maker, ob_processor_maker, n_envs=mp.cpu_count(), n_parallel=mp.cpu_count()):
         self.env_maker = env_maker
         self.n_envs = n_envs
         # No point in having more parallel workers than environments
@@ -64,6 +64,7 @@ class EnvPool(object):
         self.worker_env_offsets = np.concatenate(
             [[0], np.cumsum(self.n_worker_envs)[:-1]])
         self.last_obs = None
+        self.ob_processors = [ob_processor_maker() for _ in range(n_envs)]
 
     def start(self):
         workers = []
@@ -107,8 +108,14 @@ class EnvPool(object):
             else:
                 raise data[1].with_traceback(data[2])
         assert len(obs) == self.n_envs
-        self.last_obs = obs
-        return obs
+
+        # reset each ob processor
+        processed_obs = [None] * self.n_envs
+        for idx in range(self.n_envs):
+            self.ob_processors[idx].reset()
+            processed_obs[idx] = self.ob_processors[idx].process(obs[idx])
+        self.last_obs = processed_obs
+        return processed_obs
 
     def step(self, actions):
         assert len(actions) == self.n_envs
@@ -126,8 +133,14 @@ class EnvPool(object):
             else:
                 raise data[1].with_traceback(data[2])
         next_obs, rews, dones, infos = list(map(list, zip(*results)))
-        self.last_obs = next_obs
-        return next_obs, rews, dones, infos
+        new_next_obs = [None] * self.n_envs
+        new_infos = [None] * self.n_envs
+        for idx in range(self.n_envs):
+            new_next_obs[idx] = self.ob_processors[idx].process(next_obs[idx])
+            if dones[idx]:
+                new_infos[idx] = {'last_observation': self.ob_processors[idx].process(infos[idx]['last_observation'])}
+        self.last_obs = new_next_obs
+        return new_next_obs, rews, dones, new_infos
 
     def seed(self, seeds):
         assert len(seeds) == self.n_envs
