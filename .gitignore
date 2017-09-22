@@ -10,3 +10,5 @@ trials*/
 *.txt
 *.log
 *.swp
+
+.python-version

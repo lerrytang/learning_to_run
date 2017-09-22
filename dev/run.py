@@ -203,8 +203,8 @@ def train(config, trial_dir=None, visualize=False):
             else:
                 raise ValueError('invalid ob processor type')
 
-        def env_maker():
-            env = NIPS(visualize=False)
+        def env_maker(visualize=False):
+            env = NIPS(visualize=visualize)
             monitor_dir = os.path.join(log_dir, "gym_monitor")
             env = gym.wrappers.Monitor(env, directory=monitor_dir, video_callable=False, force=False, resume=True,
                                        write_upon_reset=True)
@@ -230,7 +230,7 @@ def train(config, trial_dir=None, visualize=False):
     logger.info("Finished (pid={}).".format(pid))
 
 
-def test(trial_dir, test_episode, visual_flag, submit_flag):
+def test(agent, trial_dir, test_episode, visual_flag, submit_flag):
     pid = os.getpid()
     logger, _ = prepare_for_logging("pid_{}".format(pid), False)
 
@@ -245,44 +245,74 @@ def test(trial_dir, test_episode, visual_flag, submit_flag):
     # load config
     with open(os.path.join(trial_dir, "config.pk"), "rb") as f:
         config = pickle.load(f)
-    config["scale_action"] = scale_action
 
-    # observation processor
-    if "ob_processor" not in config or config["ob_processor"] == "dummy":
-        ob_processor = ObservationProcessor()
-    elif config["ob_processor"] == "2ndorder":
-        ob_processor = SecondOrderAugmentor()
+    if agent == 'DDPG':
+        config["scale_action"] = scale_action
+
+        # observation processor
+        if "ob_processor" not in config or config["ob_processor"] == "dummy":
+            ob_processor = ObservationProcessor()
+        elif config["ob_processor"] == "2ndorder":
+            ob_processor = SecondOrderAugmentor()
+        else:
+            ob_processor = BodySpeedAugmentor()
+        config["ob_aug_dim"] = ob_processor.get_aug_dim()
+        util.print_settings(logger, config, env)
+
+        # create random process
+        oup = create_rand_process(env, config)
+
+        # create replay buffer
+        memory = create_memory(env, config)
+
+        # create ddpg agent
+        agent = DDPG(env, memory, oup, ob_processor, config)
+        agent.build_nets(
+            actor_hiddens=config["actor_hiddens"],
+            scale_action=config["scale_action"],
+            critic_hiddens=config["critic_hiddens"])
+
+        # load weights
+        paths = {}
+        if test_episode > 0:
+            paths["actor"] = "actor_{}.h5".format(test_episode)
+            paths["critic"] = "critic_{}.h5".format(test_episode)
+            paths["target"] = "target_{}.h5".format(test_episode)
+        else:
+            paths["actor"] = "actor.h5"
+            paths["critic"] = "critic.h5"
+            paths["target"] = "target.h5"
+        paths = {k: os.path.join(trial_dir, v) for k, v in paths.iteritems()}
+        logger.info("Paths to models: {}".format(paths))
+        agent.load_models(paths)
+
+    elif agent == 'TRPO':
+        def ob_processor_maker():
+            if config["ob_processor"] == "normal":
+                return ObservationProcessor()
+            elif config["ob_processor"] == "2ndorder":
+                return SecondOrderAugmentor()
+            elif config['ob_processor'] == 'bodyspeed':
+                return BodySpeedAugmentor()
+            else:
+                raise ValueError('invalid ob processor type')
+
+        agent = TRPO(env,
+                     env_maker=None,
+                     logger=logger,
+                     log_dir=None,
+                     ob_processor_maker=ob_processor_maker,
+                     policy_hiddens=config['policy_hiddens'],
+                     baseline_hiddens=config['baseline_hiddens'],
+                     hidden_nonlinearity=config['hidden_nonlinearity'],
+                     action_nonlinearity=config['action_nonlinearity'],
+                     n_envs=config['n_envs'],
+                     batch_size=config['batch_size'],
+                     n_iters=config['n_iters'],
+                     )
+        agent.load_models(trial_dir)
     else:
-        ob_processor = BodySpeedAugmentor()
-    config["ob_aug_dim"] = ob_processor.get_aug_dim()
-    util.print_settings(logger, config, env)
-
-    # create random process
-    oup = create_rand_process(env, config)
-
-    # create replay buffer
-    memory = create_memory(env, config)
-
-    # create ddpg agent
-    agent = DDPG(env, memory, oup, ob_processor, config)
-    agent.build_nets(
-        actor_hiddens=config["actor_hiddens"],
-        scale_action=config["scale_action"],
-        critic_hiddens=config["critic_hiddens"])
-
-    # load weights
-    paths = {}
-    if test_episode > 0:
-        paths["actor"] = "actor_{}.h5".format(test_episode)
-        paths["critic"] = "critic_{}.h5".format(test_episode)
-        paths["target"] = "target_{}.h5".format(test_episode)
-    else:
-        paths["actor"] = "actor.h5"
-        paths["critic"] = "critic.h5"
-        paths["target"] = "target.h5"
-    paths = {k: os.path.join(trial_dir, v) for k, v in paths.iteritems()}
-    logger.info("Paths to models: {}".format(paths))
-    agent.load_models(paths)
+        raise ValueError('invalid agent type')
 
     if submit_flag:
         submit(agent, logger)
@@ -368,9 +398,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.train:
-        if args.agent == 'TRPO':
-            from trpo import TRPO
+    if args.agent == 'TRPO':
+        from trpo import TRPO
+
+        if args.train:
 
             config = {
                 "agent": 'TRPO',
@@ -378,14 +409,20 @@ if __name__ == "__main__":
                 "n_envs": 16,
                 "n_iters": 5000,
                 "ob_processor": "bodyspeed",
+                "hidden_nonlinearity": "relu",
+                "action_nonlinearity": "tanh",
                 "policy_hiddens": [128, 128, 64, 64],
                 "baseline_hiddens": [128, 128, 64, 64],
             }
+            train(config, args.trial_dir, args.visualize)
+        else:
+            test(args.agent, args.trial_dir, args.test_episode, args.visualize, args.submit)
 
-        elif args.agent == 'DDPG':
-            from agent import DDPG
-            from keras.layers import Lambda
+    elif args.agent == 'DDPG':
+        from agent import DDPG
+        from keras.layers import Lambda
 
+        if args.train:
             config = {
                 #                "save_snapshot_every": 3,
                 "agent": 'DDPG',
@@ -418,8 +455,6 @@ if __name__ == "__main__":
                 #                "ob_processor": "2ndorder",
             }
         else:
-            raise ValueError('invalid agent type')
-
-        train(config, args.trial_dir, args.visualize)
+            test(args.agent, args.trial_dir, args.test_episode, args.visualize, args.submit)
     else:
-        test(args.trial_dir, args.test_episode, args.visualize, args.submit)
+        raise ValueError('invalid agent type')

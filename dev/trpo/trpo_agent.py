@@ -108,7 +108,7 @@ class TRPO(object):
     """
 
     def __init__(self, env, env_maker, logger, log_dir, ob_processor_maker, policy_hiddens, baseline_hiddens,
-                 n_envs=mp.cpu_count(), last_iter=-1, n_iters=100,
+                 n_envs=mp.cpu_count(), last_iter=-1, n_iters=100, hidden_nonlinearity='relu', action_nonlinearity='tanh',
                  batch_size=1000, discount=0.99, gae_lambda=0.97, step_size=0.01, use_linesearch=True,
                  kl_subsamp_ratio=1., snapshot_saver=None):
         self.env = env
@@ -127,6 +127,8 @@ class TRPO(object):
         self.use_linesearch = use_linesearch
         self.kl_subsamp_ratio = kl_subsamp_ratio
 
+        self.jump = False
+
         # self.snapshot_saver = snapshot_saver
         obs_space = (self.env.observation_space.shape[0] + ob_processor_maker().get_aug_dim(),)
         # obs_space = self.env.observation_space
@@ -134,16 +136,16 @@ class TRPO(object):
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
-            action_nonlinearity=chainer.functions.tanh,
+            action_nonlinearity=action_nonlinearity,
             hidden_sizes=policy_hiddens,
-            hidden_nonlinearity=chainer.functions.relu,
+            hidden_nonlinearity=hidden_nonlinearity,
         )
         self.baseline = MLPBaseline(
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
             hidden_sizes=baseline_hiddens,
-            hidden_nonlinearity=chainer.functions.relu,
+            hidden_nonlinearity=hidden_nonlinearity,
         )
 
         self.name2val = OrderedDict()
@@ -206,8 +208,6 @@ class TRPO(object):
         all_dists = self.policy.distribution.from_dict(
             {k: chainer.Variable(v) for k, v in all_dists.items()})
 
-        import ipdb
-        ipdb.set_trace()
         return all_obs, all_acts, all_advs, all_dists
 
     def parallel_collect_samples(self, env_pool):
@@ -482,6 +482,37 @@ class TRPO(object):
                     #             )
                     #         )
                     #     )
+
+    def test(self, max_steps=1000):
+        episode_reward = 0
+        episode_steps = 0
+        new_ob = self.env.reset()
+        ob_processor = self.ob_processor_maker()
+        zero_action = np.zeros(self.env.action_space.shape)
+        first_frame = True
+        done = False
+        while not done:
+
+            # ignore first frame because it contains phantom obstacle
+            if first_frame:
+                new_ob, reward, done, info = self.env.step(zero_action)
+                episode_reward += reward
+                episode_steps += 1
+                first_frame = False
+                assert not done, "Episode finished in one step"
+                continue
+
+            new_ob = ob_processor.process(new_ob)
+            action, _ = self.policy.get_action(new_ob)
+            action = np.clip(action, self.policy.action_space.low, self.policy.action_space.high)
+            # act_to_apply = action.squeeze()
+            # if self.jump:
+            #     act_to_apply = np.tile(act_to_apply, 2)
+            new_ob, reward, done, info = self.env.step(action)
+            episode_reward += reward
+            episode_steps += 1
+            done = done | (episode_steps >= max_steps)
+        return episode_steps, episode_reward
 
     def save_models(self):
         chainer.serializers.save_npz(os.path.join(self.log_dir, 'policy.npz'), self.policy)
