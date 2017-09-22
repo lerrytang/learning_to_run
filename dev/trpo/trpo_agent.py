@@ -134,15 +134,16 @@ class TRPO(object):
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
+            action_nonlinearity=chainer.functions.tanh,
             hidden_sizes=policy_hiddens,
-            hidden_nonlinearity=chainer.functions.tanh,
+            hidden_nonlinearity=chainer.functions.relu,
         )
         self.baseline = MLPBaseline(
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
             hidden_sizes=baseline_hiddens,
-            hidden_nonlinearity=chainer.functions.tanh,
+            hidden_nonlinearity=chainer.functions.relu,
         )
 
         self.name2val = OrderedDict()
@@ -205,6 +206,8 @@ class TRPO(object):
         all_dists = self.policy.distribution.from_dict(
             {k: chainer.Variable(v) for k, v in all_dists.items()})
 
+        import ipdb
+        ipdb.set_trace()
         return all_obs, all_acts, all_advs, all_dists
 
     def parallel_collect_samples(self, env_pool):

@@ -378,8 +378,8 @@ if __name__ == "__main__":
                 "n_envs": 16,
                 "n_iters": 5000,
                 "ob_processor": "bodyspeed",
-                "policy_hiddens": [256, 128, 64],
-                "baseline_hiddens": [256, 128, 64],
+                "policy_hiddens": [128, 128, 64, 64],
+                "baseline_hiddens": [128, 128, 64, 64],
             }
 
         elif args.agent == 'DDPG':

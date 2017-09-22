@@ -238,8 +238,9 @@ class NNFeaturePolicy(Policy, NNFeatureModel):
 
 
 class GaussianPolicy(NNFeaturePolicy):
-    def __init__(self, observation_space, action_space, env_spec, **kwargs):
+    def __init__(self, observation_space, action_space, env_spec, action_nonlinearity=None, **kwargs):
         super(GaussianPolicy, self).__init__(observation_space, action_space, env_spec, **kwargs)
+        self.action_nonlinearlity = action_nonlinearity
         with self.init_scope():
             assert self.feature_dim is not None
             self.l_act = L.Linear(self.feature_dim, self.action_dim)
@@ -250,6 +251,8 @@ class GaussianPolicy(NNFeaturePolicy):
         if feats is None:
             feats = super(GaussianPolicy, self).compute_features(obs)
         means = self.l_act(feats)
+        if self.action_nonlinearlity is not None:
+            means = self.action_nonlinearlity(means)
         # for this policy, the variance is independent of the state
         log_stds = F.tile(self.log_std.reshape((1, -1)), (len(feats), 1))
         return Gaussian(means=means, log_stds=log_stds)
