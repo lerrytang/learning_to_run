@@ -7,10 +7,6 @@ All RL algorithms should implement the following methods:
 
 
 class Agent(object):
-
-    def __init__(self, env, config):
-        pass
-
     def learn(self):
         """
         All necessary settings are in config

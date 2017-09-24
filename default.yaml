@@ -33,3 +33,12 @@ TRPO:
     action_nonlinearity: "tanh"
     policy_hiddens: [128, 128, 64, 64]
     baseline_hiddens: [128, 128, 64, 64]
+    last_iter: -1
+    discount: 0.99
+    gae_lambda: 0.97
+    step_size: 0.01
+    use_linesearch: True
+    kl_subsamp_ratio: 1.
+    snapshot_saver: None
+    jump: False
+

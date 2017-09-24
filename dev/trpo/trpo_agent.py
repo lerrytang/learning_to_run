@@ -16,6 +16,11 @@ from .models import *
 from .chainer_utils import *
 from .env_utils import EnvPool
 
+sys.path.append('../')
+from ob_processor import ObservationProcessor, SecondOrderAugmentor, BodySpeedAugmentor
+from nipsenv import NIPS
+from agent import Agent
+
 
 def fvp(policy, f_kl, grad0, v, eps=1e-5, damping=1e-8):
     """
@@ -80,7 +85,7 @@ def linesearch(f, x0, dx, expected_improvement, y0=None, backtrack_ratio=0.8, ma
     return x0, expected_improvement, 0, 0
 
 
-class TRPO(object):
+class TRPO(Agent):
     """
     This method implements Trust Region Policy Optimization. Without the line search step, this algorithm is equivalent
     to an approximate procedure for computing natural gradient using conjugate gradients, where it performs approximate
@@ -107,27 +112,42 @@ class TRPO(object):
     :param snapshot_saver: An object for saving snapshots.
     """
 
-    def __init__(self, env, env_maker, logger, log_dir, ob_processor_maker, policy_hiddens, baseline_hiddens,
-                 n_envs=mp.cpu_count(), last_iter=-1, n_iters=100, hidden_nonlinearity='relu', action_nonlinearity='tanh',
-                 batch_size=1000, discount=0.99, gae_lambda=0.97, step_size=0.01, use_linesearch=True,
-                 kl_subsamp_ratio=1., snapshot_saver=None):
-        self.env = env
+    def __init__(self, env, config):
+        def ob_processor_maker():
+            if config["ob_processor"] == "normal":
+                return ObservationProcessor()
+            elif config["ob_processor"] == "2ndorder":
+                return SecondOrderAugmentor()
+            elif config['ob_processor'] == 'bodyspeed':
+                return BodySpeedAugmentor()
+            else:
+                raise ValueError('invalid ob processor type')
+
+        def env_maker(visualize=False):
+            env = NIPS(visualize=visualize)
+            monitor_dir = os.path.join(config['log_dir'], "gym_monitor")
+            env = gym.wrappers.Monitor(env, directory=monitor_dir, video_callable=False, force=False, resume=True,
+                                       write_upon_reset=True)
+            return env
+
         self.env_maker = env_maker
-        self.logger = logger
-        self.log_dir = log_dir
         self.ob_processor_maker = ob_processor_maker
-        self.n_envs = n_envs
-        self.last_iter = last_iter
-        self.n_iters = n_iters
 
-        self.batch_size = batch_size
-        self.discount = discount
-        self.gae_lambda = gae_lambda
-        self.step_size = step_size
-        self.use_linesearch = use_linesearch
-        self.kl_subsamp_ratio = kl_subsamp_ratio
+        self.env = env
+        self.n_envs = mp.cpu_count() if config['n_envs'] is None else config['n_envs']
+        self.last_iter = config['last_iter']
+        self.n_iters = config['n_iters']
 
-        self.jump = False
+        self.batch_size = config['batch_size']
+        self.discount = config['discount']
+        self.gae_lambda = config['gae_lambda']
+        self.step_size = config['step_size']
+        self.use_linesearch = config['use_linesearch']
+        self.kl_subsamp_ratio = config['kl_subsamp_ratio']
+
+        self.jump = config['jump']
+        self.logger = config["logger"]
+        self.log_dir = config["log_dir"]
 
         # self.snapshot_saver = snapshot_saver
         obs_space = (self.env.observation_space.shape[0] + ob_processor_maker().get_aug_dim(),)
@@ -136,16 +156,16 @@ class TRPO(object):
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
-            action_nonlinearity=action_nonlinearity,
-            hidden_sizes=policy_hiddens,
-            hidden_nonlinearity=hidden_nonlinearity,
+            action_nonlinearity=config['action_nonlinearity'],
+            hidden_sizes=config['policy_hiddens'],
+            hidden_nonlinearity=config['hidden_nonlinearity'],
         )
         self.baseline = MLPBaseline(
             observation_space=obs_space,
             action_space=env.action_space,
             env_spec=env.spec,
-            hidden_sizes=baseline_hiddens,
-            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_sizes=config['baseline_hiddens'],
+            hidden_nonlinearity=config['hidden_nonlinearity'],
         )
 
         self.name2val = OrderedDict()
@@ -297,10 +317,9 @@ class TRPO(object):
         return trajs
 
     # def collect_samples(self, batch_size):
-    def learn(self):
+    def learn(self, total_episodes=10000):
 
-        self.logger.info("Starting env pool asdasdfasdfasdf")
-
+        self.logger.info("Starting env pool")
         with EnvPool(self.env_maker, self.ob_processor_maker, n_envs=self.n_envs) as env_pool:
             for iter in range(self.last_iter + 1, self.n_iters):
                 # self.logger.info("Starting iteration {}".format(iter))
