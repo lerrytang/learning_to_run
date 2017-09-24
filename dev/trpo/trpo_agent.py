@@ -503,8 +503,10 @@ class TRPO(object):
                 continue
 
             new_ob = ob_processor.process(new_ob)
-            action, _ = self.policy.get_action(new_ob)
-            action = np.clip(action, self.policy.action_space.low, self.policy.action_space.high)
+            action, dists = self.policy.get_action(new_ob)
+            # if policy is deterministic, don't need variance
+            action = 0.5 * (dists['means'] + 1)
+            # action = np.clip(action, self.policy.action_space.low, self.policy.action_space.high)
             # act_to_apply = action.squeeze()
             # if self.jump:
             #     act_to_apply = np.tile(act_to_apply, 2)
@@ -518,9 +520,10 @@ class TRPO(object):
         chainer.serializers.save_npz(os.path.join(self.log_dir, 'policy.npz'), self.policy)
         chainer.serializers.save_npz(os.path.join(self.log_dir, 'baseline.npz'), self.baseline)
 
-    def load_models(self, load_dir):
+    def load_models(self, load_dir, only_policy=True):
         chainer.serializers.load_npz(os.path.join(load_dir, 'policy.npz'), self.policy)
-        chainer.serializers.load_npz(os.path.join(load_dir, 'baseline.npz'), self.baseline)
+        if not only_policy:
+            chainer.serializers.load_npz(os.path.join(load_dir, 'baseline.npz'), self.baseline)
 
     def logkv(self, key, val):
         self.name2val[key] = val
