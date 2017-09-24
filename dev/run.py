@@ -87,9 +87,7 @@ def train(config, trial_dir=None, visualize=False):
         agent.set_state(config)
     else:
         util.print_sec_header(logger, "Training from scratch")
-    reward_hist, steps_hist = agent.learn(
-            total_episodes=config["total_episodes"],
-            max_steps=config["max_steps"])
+    reward_hist, steps_hist = agent.learn( total_episodes=config["total_episodes"])
     env.close()
 
     # send result
