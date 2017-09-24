@@ -1,5 +1,4 @@
 import argparse
-from ddpg import DDPG
 from nipsenv import NIPS
 import util
 from datetime import datetime
@@ -7,7 +6,6 @@ import sys
 import os
 import logging
 import numpy as np
-
 
 SUPPORTED_AGENTS = ["DDPG", "TRPO"]
 
@@ -27,7 +25,7 @@ def prepare_for_logging(name, create_folder=True):
         log_dir = os.path.join("trials", dirname)
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
-    
+
         # set up logger
         log_file = os.path.join(log_dir, "train.log")
         fh = logging.FileHandler(log_file)
@@ -57,14 +55,14 @@ def train(config, trial_dir=None, visualize=False):
         config_file = os.path.join(trial_dir, "config.yaml")
         if os.path.exists(config_file):
             logger.info("Found config file in {}".format(trial_dir))
-            existing_config = load_config(config_file)
+            existing_config = util.load_config(config_file)
             assert existing_config["agent"] == t_agent, "Different algorithms"
             fine_tuning = True
             for k, v in config.iteritems():
                 existing_config[k] = v
             config = existing_config
             config["model_dir"] = trial_dir
-    
+
     # save config to the trial folder
     util.print_settings(logger, config, env)
     config_file = os.path.join(log_dir, "config.yaml")
@@ -74,8 +72,10 @@ def train(config, trial_dir=None, visualize=False):
     config["logger"] = logger
     config["log_dir"] = log_dir
     if t_agent == "DDPG":
+        from ddpg import DDPG
         agent = DDPG(env, config)
     elif t_agent == "TRPO":
+        from trpo import TRPO
         agent = TRPO(env, config)
     else:
         # because of the assertion above, this should never happen
@@ -87,7 +87,7 @@ def train(config, trial_dir=None, visualize=False):
         agent.set_state(config)
     else:
         util.print_sec_header(logger, "Training from scratch")
-    reward_hist, steps_hist = agent.learn( total_episodes=config["total_episodes"])
+    reward_hist, steps_hist = agent.learn(total_episodes=config["total_episodes"])
     env.close()
 
     # send result
@@ -100,7 +100,6 @@ def train(config, trial_dir=None, visualize=False):
 
 
 def test(trial_dir, visual_flag, token):
-
     assert trial_dir is not None and os.path.exists(trial_dir)
 
     env = NIPS(visual_flag, token)
@@ -119,8 +118,10 @@ def test(trial_dir, visual_flag, token):
     config["log_dir"] = trial_dir
     t_agent = config["agent"]
     if t_agent == "DDPG":
+        from ddpg import DDPG
         agent = DDPG(env, config)
     elif t_agent == "TRPO":
+        from trpo import TRPO
         agent = TRPO(env, config)
     else:
         raise ValueError("Unsupported agent type: {}".format(t_agent))
@@ -129,7 +130,7 @@ def test(trial_dir, visual_flag, token):
     # test
     util.print_sec_header(logger, "Testing")
     rewards = agent.test()
-    logger.info("avg_reward={}".format(np.mean(rewards))) 
+    logger.info("avg_reward={}".format(np.mean(rewards)))
     env.close()
 
 
@@ -147,8 +148,9 @@ if __name__ == "__main__":
         if args.config_yaml is None or not os.path.exists(args.config_yaml):
             config = util.load_config("default.yaml")
             config = config[args.agent]
+        else:
+            config = util.load_config(args.config_yaml)
         config["agent"] = args.agent
         train(config, args.trial_dir, args.visualize)
     else:
         test(args.trial_dir, args.visualize, args.token)
-
