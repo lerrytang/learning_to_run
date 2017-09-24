@@ -1,3 +1,4 @@
+import yaml
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
@@ -35,14 +36,19 @@ def print_settings(logger, config, env=None):
         logger.info("")
 
 
-def print_episode_info(logger, episode_info, pid):
-    episode_n = episode_info["episode"]
-    episode_steps = episode_info["steps"]
-    episode_reward = episode_info["total_reward"]
-    episode_loss = episode_info["loss"]
-    episode_qval = episode_info["qval"]
-    logger.info("pid={0}, episode={1}, steps={2}, rewards={3:.4f}, avg_loss={4:.4f}, avg_q={5:.4f}".format(
-        pid, episode_n, episode_steps, episode_reward, np.mean(episode_loss), np.mean(episode_qval)))
+# ============================================= #
+#          Configration Utilities               #
+# ============================================= #
+
+def load_config(config_file):
+    with open(config_file, "r") as f:
+        config = yaml.load(f)
+    return config
+
+
+def save_config(config_file, config):
+    with open(config_file, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
 
 
 # ============================================= #
@@ -59,13 +65,14 @@ def plot_stats(reward_hist, steps_hist, img_file):
     plt.savefig(img_file)
 
 
-def send_email(title, image_files, txt_files, smtp_server=None):
+def send_email(title, image_files, txt_files, config):
 
+    smtp_server = None if "smtp" not in config else config["smtp"]
     if smtp_server is None:
         return
 
-    me = "drl_search@XXX"
-    you = ["lerrytang@gmail.com"]
+    me = config["mail_from"]
+    you = config["mail_to"]
     hostname = socket.gethostname()
     msg = MIMEMultipart()
     msg['Subject'] = hostname + "_" + title

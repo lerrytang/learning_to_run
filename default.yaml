@@ -1,0 +1,35 @@
+DDPG:
+    use_bn: False
+    save_snapshot_every: 500
+    num_train: 1
+    jump: False
+    gamma: 0.99
+    tau: 0.001
+    batch_size: 128
+    actor_l2: 0.000001
+    actor_lr: 0.0001
+    actor_l2_action: 0.00001
+    critic_l2: 0.000001
+    critic_lr: 0.0003
+    merge_at_layer: 1
+    theta: 0.15
+    sigma_init: 0.1
+    sigma_min: 0.002
+    total_episodes: 50000
+    max_steps: 1000
+    memory_warmup: 10000
+    memory_capacity: 1000000
+    annealing_steps: 3000000
+    actor_hiddens: [128, 128, 64, 64]
+    critic_hiddens: [128, 128, 64, 64]
+    ob_processor: "bodyspeed"
+    lrelu: -1
+TRPO:
+    batch_size: 5000
+    n_envs: 16
+    n_iters: 5000
+    ob_processor: "bodyspeed"
+    hidden_nonlinearity: "relu"
+    action_nonlinearity: "tanh"
+    policy_hiddens: [128, 128, 64, 64]
+    baseline_hiddens: [128, 128, 64, 64]
