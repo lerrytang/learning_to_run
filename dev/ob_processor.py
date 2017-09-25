@@ -1,8 +1,8 @@
 from copy import deepcopy
 import numpy as np
-# import logging
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.INFO)
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 """
@@ -64,12 +64,21 @@ class NormalizedFirstOrder(ObservationProcessor):
         if self.last_observation is None:
             res = ob + self.zero_padding
         else:
-            ob_augmentation = cur_observation - self.last_observation
+            # times 100 because each step is 0.01sec
+            ob_augmentation = (cur_observation - self.last_observation) * 100.0
             res = ob + ob_augmentation.tolist()
         self.last_observation = cur_observation
 
         # normalize
         res = np.asarray(res)
+
+        # logger.info("Velocities before normalization")
+        # logger.info(res[PELVIS_VEL_X_IX])
+        # logger.info(res[VEL_X_NORMALIZE_INDICE])
+        # logger.info(res[PELVIS_VEL_Y_IX])
+        # logger.info(res[VEL_Y_NORMALIZE_INDICE])
+        # logger.info("-"*50)
+
         res[X_NORMALIZE_INDICE] -= res[PELVIS_X_IX]
         res[Y_NORMALIZE_INDICE] -= res[PELVIS_Y_IX]
         res[VEL_X_NORMALIZE_INDICE] -= res[PELVIS_VEL_X_IX]
@@ -84,6 +93,13 @@ class NormalizedFirstOrder(ObservationProcessor):
             # set invisible size
             # logger.info("Past all obstacles.")
             res[OBSTACLE_X_IX] = 0
+
+        # logger.info("Velocities after normalization")
+        # logger.info(res[PELVIS_VEL_X_IX])
+        # logger.info(res[VEL_X_NORMALIZE_INDICE])
+        # logger.info(res[PELVIS_VEL_Y_IX])
+        # logger.info(res[VEL_Y_NORMALIZE_INDICE])
+        # logger.info("-" * 50)
 
         return res.tolist()
 
@@ -119,6 +135,8 @@ class BodySpeedAugmentor(ObservationProcessor):
         if self.last_observation is None:
             res = ob + self.zero_padding
         else:
+            # TODO: this is a bug (need to time 100)
+            # but because some trials are trained on this, I leave it as-is
             ob_augmentation = cur_observation - self.last_observation
             res = ob + ob_augmentation.tolist()
         self.last_observation = cur_observation
@@ -190,6 +208,8 @@ class SecondOrderAugmentor(ObservationProcessor):
             if last_observation is None:
                 res += [0]*self.ix[i].size
             else:
+                # TODO: this is a bug (need to time 100)
+                # but because some trials are trained on this, I leave it as-is
                 ob_augmentation = cur_observations[i] - last_observation
                 res += ob_augmentation.tolist()
         self.last_observations = cur_observations
