@@ -2,12 +2,13 @@ import argparse
 from nipsenv import NIPS
 import util
 from datetime import datetime
-import sys
 import os
 import logging
 import numpy as np
 
+
 SUPPORTED_AGENTS = ["DDPG", "TRPO"]
+scale_action = None   # to deal with legacy config.pk
 
 
 def prepare_for_logging(name, create_folder=True):
@@ -36,7 +37,22 @@ def prepare_for_logging(name, create_folder=True):
     return logger, log_dir
 
 
-def train(config, trial_dir=None, visualize=False):
+def convert_legacy_config(trial_dir, t_agent):
+    legacy_config_file = os.path.join(trial_dir, "config.pk")
+    config_file = os.path.join(trial_dir, "config.yaml")
+    if not os.path.exists(legacy_config_file):
+        raise ValueError("No config file found in {}".format(trial_dir))
+    else:
+        legacy_config = util.load_legacy_config(legacy_config_file)
+        default_config = util.load_config("default.yaml")[t_agent]
+        for k in default_config:
+            if k in legacy_config:
+                default_config[k] = legacy_config[k]
+        default_config["agent"] = t_agent
+        util.save_config(config_file, default_config)
+
+
+def train(config, trial_dir=None, visualize=False, overwrite_config=False):
     t_agent = config["agent"]
     assert t_agent in SUPPORTED_AGENTS, "Agent type {} not supported".format(t_agent)
 
@@ -49,19 +65,20 @@ def train(config, trial_dir=None, visualize=False):
     env = NIPS(visualize)
     logger.info("pid={}, env={}".format(pid, id(env)))
 
-    # if old config is found, new config entris overwrites those in the old
+    # to train from scratch or fine tune
     fine_tuning = False
     if trial_dir is not None:
         config_file = os.path.join(trial_dir, "config.yaml")
-        if os.path.exists(config_file):
-            logger.info("Found config file in {}".format(trial_dir))
-            existing_config = util.load_config(config_file)
-            assert existing_config["agent"] == t_agent, "Different algorithms"
-            fine_tuning = True
+        if not os.path.exists(config_file):
+            convert_legacy_config(trial_dir, t_agent)
+        existing_config = util.load_config(config_file)
+        fine_tuning = True
+        if overwrite_config:
+            logger.info("Overwrite config from file {}".format(trial_dir))
             for k, v in config.iteritems():
                 existing_config[k] = v
-            config = existing_config
-            config["model_dir"] = trial_dir
+        config = existing_config
+        config["model_dir"] = trial_dir
 
     # save config to the trial folder
     util.print_settings(logger, config, env)
@@ -99,7 +116,7 @@ def train(config, trial_dir=None, visualize=False):
     logger.info("Finished (pid={}).".format(pid))
 
 
-def test(trial_dir, visual_flag, token):
+def test(t_agent, trial_dir, visual_flag, token):
     assert trial_dir is not None and os.path.exists(trial_dir)
 
     env = NIPS(visual_flag, token)
@@ -110,13 +127,14 @@ def test(trial_dir, visual_flag, token):
 
     # load config
     config_file = os.path.join(trial_dir, "config.yaml")
+    if not os.path.exists(config_file):
+        convert_legacy_config(trial_dir, t_agent)
     config = util.load_config(config_file)
     util.print_settings(logger, config, env)
 
     # instantiate an agent
     config["logger"] = logger
     config["log_dir"] = trial_dir
-    t_agent = config["agent"]
     if t_agent == "DDPG":
         from ddpg import DDPG
         agent = DDPG(env, config)
@@ -142,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument('--token', default=None, type=str)
     parser.add_argument('--visualize', action='store_true', default=False)
     parser.add_argument('--trial_dir', default=None, type=str)
+    parser.add_argument('--overwrite_config', action='store_true', default=False)
     args = parser.parse_args()
 
     if args.train:
@@ -151,6 +170,6 @@ if __name__ == "__main__":
         else:
             config = util.load_config(args.config_yaml)
         config["agent"] = args.agent
-        train(config, args.trial_dir, args.visualize)
+        train(config, args.trial_dir, args.visualize, args.overwrite_config)
     else:
-        test(args.trial_dir, args.visualize, args.token)
+        test(args.agent, args.trial_dir, args.visualize, args.token)

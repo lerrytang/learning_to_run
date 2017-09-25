@@ -10,6 +10,7 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 import numpy as np
 import socket
+import pickle
 
 
 # ============================================= #
@@ -49,6 +50,12 @@ def load_config(config_file):
 def save_config(config_file, config):
     with open(config_file, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
+
+
+def load_legacy_config(config_pk):
+    with open(config_pk, "rb") as f:
+        config = pickle.load(f)
+    return config
 
 
 # ============================================= #
