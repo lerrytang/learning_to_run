@@ -1,7 +1,8 @@
 from agent import Agent
 from rand import OrnsteinUhlenbeckProcess as OUP
 from mem import ReplayBuffer as RB
-from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor, NormalizedFirstOrder
+from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
+from ob_processor import NormalizedFirstOrder, NormalizedSecondOrder
 
 from keras.models import Model
 from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
@@ -43,6 +44,8 @@ def create_ob_processor(env, config):
         obp = SecondOrderAugmentor()
     elif config["ob_processor"] == "norm1storder":
         obp = NormalizedFirstOrder()
+    elif config["ob_processor"] == "norm2ndorder":
+        obp = NormalizedSecondOrder()
     else:
         obp = BodySpeedAugmentor()
     return obp
