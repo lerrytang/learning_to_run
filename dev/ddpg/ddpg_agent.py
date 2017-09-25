@@ -1,7 +1,7 @@
-from agent import Agent
+from dev.agent import Agent
 from rand import OrnsteinUhlenbeckProcess as OUP
 from mem import ReplayBuffer as RB
-from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
+from dev.ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
 
 from keras.models import Model
 from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
