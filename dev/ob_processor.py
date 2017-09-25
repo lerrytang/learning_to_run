@@ -1,13 +1,39 @@
 from copy import deepcopy
 import numpy as np
-#import logging
-#logger = logging.getLogger(__name__)
-#logger.setLevel(logging.INFO)
+# import logging
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.INFO)
 
 
-PELVIS_IX = 1
+"""
+The observation contains 41 values:
+
+position of the pelvis (rotation, x, y)
+velocity of the pelvis (rotation, x, y)
+rotation of each ankle, knee and hip (6 values)
+angular velocity of each ankle, knee and hip (6 values)
+position of the center of mass (2 values)
+velocity of the center of mass (2 values)
+positions (x, y) of head, pelvis, torso, left and right toes, left and right talus (14 values)
+strength of left and right psoas: 1 for difficulty < 2, otherwise a random normal variable with mean 1 and standard deviation 0.1 fixed for the entire simulation
+next obstacle: x distance from the pelvis, y position of the center relative to the the ground, radius.
+"""
+
 MAX_NUM_OBSTACLE = 3
-NORMALIZE_INDICE = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
+
+PELVIS_X_IX = 1
+PELVIS_Y_IX = 2
+X_NORMALIZE_INDICE = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
+Y_NORMALIZE_INDICE = X_NORMALIZE_INDICE[1:] + 1    # reserve absolute value of y of pelvis
+
+PELVIS_VEL_X_IX = 4
+PELVIS_VEL_Y_IX = 5
+VEL_X_NORMALIZE_INDICE = np.asarray([4, 20] + [41, 43, 45, 47, 49, 51, 53])
+VEL_Y_NORMALIZE_INDICE = VEL_X_NORMALIZE_INDICE + 1
+
+PSOAS_IX = np.asarray([36, 37])
+OBSTACLE_X_IX = 38
+OBSTACLE_IX = np.asarray([38, 39, 40])
 
 
 class ObservationProcessor:
@@ -20,6 +46,53 @@ class ObservationProcessor:
 
     def reset(self):
         pass
+
+
+class NormalizedFirstOrder(ObservationProcessor):
+
+    def __init__(self):
+        self.last_observation = None
+        self.num_body_parts = 14
+        self.body_parts_ix = np.arange(22, 36)
+        self.zero_padding = [0] * self.num_body_parts
+        self.obstacle_pos = set()
+
+    def process(self, ob):
+
+        # generate velocity for body parts
+        cur_observation = np.asarray(ob)[self.body_parts_ix]
+        if self.last_observation is None:
+            res = ob + self.zero_padding
+        else:
+            ob_augmentation = cur_observation - self.last_observation
+            res = ob + ob_augmentation.tolist()
+        self.last_observation = cur_observation
+
+        # normalize
+        res = np.asarray(res)
+        res[X_NORMALIZE_INDICE] -= res[PELVIS_X_IX]
+        res[Y_NORMALIZE_INDICE] -= res[PELVIS_Y_IX]
+        res[VEL_X_NORMALIZE_INDICE] -= res[PELVIS_VEL_X_IX]
+        res[VEL_Y_NORMALIZE_INDICE] -= res[PELVIS_VEL_Y_IX]
+        res[PSOAS_IX] -= 1.0
+
+        # deal with obstacles
+        if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
+            ob_x = round(res[OBSTACLE_X_IX] + ob[PELVIS_X_IX], 4)
+            self.obstacle_pos.add(ob_x)
+        else:
+            # set invisible size
+            # logger.info("Past all obstacles.")
+            res[OBSTACLE_X_IX] = 0
+
+        return res.tolist()
+
+    def get_aug_dim(self):
+        return self.num_body_parts
+
+    def reset(self):
+        self.last_observation = None
+        self.obstacle_pos.clear()
 
 
 class BodySpeedAugmentor(ObservationProcessor):
@@ -35,7 +108,7 @@ class BodySpeedAugmentor(ObservationProcessor):
 
         # deal with obstacles
         if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
-            pelvis_x = ob[PELVIS_IX]
+            pelvis_x = ob[PELVIS_X_IX]
             ob_x = ob[-3] + pelvis_x
             self.obstacle_pos.add(ob_x)
         else:
@@ -53,7 +126,7 @@ class BodySpeedAugmentor(ObservationProcessor):
         # normalize x
         res = np.asarray(res)
 #        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
-        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
+        res[X_NORMALIZE_INDICE] -= res[X_NORMALIZE_INDICE].min()
         res = res.tolist()
 
 #        logger.info("observation:")
@@ -104,7 +177,7 @@ class SecondOrderAugmentor(ObservationProcessor):
 
         # deal with obstacles
         if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
-            pelvis_x = ob[PELVIS_IX]
+            pelvis_x = ob[PELVIS_X_IX]
             ob_x = ob[-3] + pelvis_x
             self.obstacle_pos.add(ob_x)
         else:
@@ -124,7 +197,7 @@ class SecondOrderAugmentor(ObservationProcessor):
         # normalize x
         res = np.asarray(res)
 #        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
-        res[NORMALIZE_INDICE] -= res[NORMALIZE_INDICE].min()
+        res[X_NORMALIZE_INDICE] -= res[X_NORMALIZE_INDICE].min()
         res = res.tolist()
 
         return res
