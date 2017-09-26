@@ -1,7 +1,7 @@
 DDPG:
     use_bn: False
     save_snapshot_every: 1000
-    train_every: 4
+    train_every: 1
     jump: False
     gamma: 0.99
     tau: 0.001
@@ -22,7 +22,8 @@ DDPG:
     annealing_steps: 4000000
     actor_hiddens: [128, 128, 64, 64]
     critic_hiddens: [128, 128, 64, 64]
-    ob_processor: "bodyspeed"
+    ob_processor: "norm1storder"
+    mirror_ob: True
     lrelu: -1
 TRPO:
     batch_size: 5000
