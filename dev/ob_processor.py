@@ -109,7 +109,7 @@ class NormalizedFirstOrder(ObservationProcessor):
 
         # augment the original observation with diff
         if self.last_observation is None:
-            res = ob + ob[:OBSTACLE_X_IX]
+            res = ob + [0] * self.get_aug_dim()
         else:
             ob_augmentation = np.asarray(ob) - self.last_observation
             res = ob + ob_augmentation[:OBSTACLE_X_IX].tolist()
@@ -121,12 +121,14 @@ class NormalizedFirstOrder(ObservationProcessor):
             ob_x = round(res[OBSTACLE_X_IX] + ob[PELVIS_X_IX], 4)
             self.obstacle_pos.add(ob_x)
         else:
-            # set invisible size
-            res[OBSTACLE_X_IX] = 0
+            # set to invisible size and right beneath the pelvis
+            res[OBSTACLE_IX] = 0
 
         # normalize
         res[X_NORMALIZE_INDICES] -= res[PELVIS_X_IX]
         res[PSOAS_IX] -= 1.0
+
+        # logger.info(res)
 
         return res.tolist()
 
@@ -162,6 +164,7 @@ class NormalizedFirstOrder(ObservationProcessor):
         return int(ORG_OB_DIM - OBSTACLE_IX.size)
 
     def reset(self):
+        # logger.info("reset() called")
         self.last_observation = None
         self.obstacle_pos.clear()
 
