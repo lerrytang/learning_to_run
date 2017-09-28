@@ -68,6 +68,9 @@ radius_obstacle     40
 
 MAX_NUM_OBSTACLE = 3
 
+TOE_L_IX = 28
+TOE_R_IX = 30
+
 ORG_OB_DIM = 41
 PELVIS_X_IX = 1
 PELVIS_Y_IX = 2
@@ -77,6 +80,15 @@ BODY_PARTS_IX = np.arange(22, 36)
 PSOAS_IX = np.asarray([36, 37])
 OBSTACLE_X_IX = 38
 OBSTACLE_IX = np.asarray([38, 39, 40])
+
+
+def flip_observation(ob, to_negate, l_part, r_part):
+    res = deepcopy(ob)
+    res[:, to_negate] *= -1
+    tmp = res[:, l_part]
+    res[:, l_part] = res[:, r_part]
+    res[:, r_part] = tmp
+    return res
 
 
 class ObservationProcessor(object):
@@ -129,15 +141,21 @@ class NormalizedFirstOrder(ObservationProcessor):
         res[PSOAS_IX] -= 1.0
 
         # logger.info(res)
+        # logger.info("Distance between toes: {}".format(np.abs(res[28] - res[30])))
+        # threshold = 0.01
+        # if np.abs(res[28]-res[30]) >= threshold:
+        #     logger.info("Distance between toes larger than {}".format(threshold))
 
         return res.tolist()
 
-    def mirror_ob(self, ob):
+    def mirror_ob(self, ob0, action, reward, ob1, done, toe_dist_threshold):
         """
         Exchange left and right body parts (if it is pelvis rotation, negate)
-        :param ob: [batch_size, 2xORG_OB_DIM-OBSTACLE_IX.size]
-        :return:
+
+        condition: ONLY IF the distance betwen the 2 toes are larger than toe_dist_threshold
         """
+
+        # sanity check
         to_negate_org = np.asarray([0, 3])  # pelvis rotations
         to_negate_aug = to_negate_org + ORG_OB_DIM
         to_negate = np.append(to_negate_org, to_negate_aug)
@@ -153,12 +171,29 @@ class NormalizedFirstOrder(ObservationProcessor):
         assert r_part.size == l_part.size
         assert np.intersect1d(l_part, r_part).size == 0
 
-        res = deepcopy(ob)
-        res[:, to_negate] *= -1
-        tmp = res[:, l_part]
-        res[:, l_part] = res[:, r_part]
-        res[:, r_part] = tmp
-        return res
+        # get indices of experiences that are qualified to mirror
+        l_toe_x_pos = ob0[:, TOE_L_IX]
+        r_toe_x_pos = ob0[:, TOE_R_IX]
+        mask = np.abs(l_toe_x_pos - r_toe_x_pos) >= toe_dist_threshold
+
+        if np.sum(mask) > 0:
+            # augment ob0
+            aug_ob0 = flip_observation(ob0[mask], to_negate, l_part, r_part)
+            ob0 = np.concatenate([ob0, aug_ob0], axis=0)
+            # augment ob1
+            aug_ob1 = flip_observation(ob1[mask], to_negate, l_part, r_part)
+            ob1 = np.concatenate([ob1, aug_ob1], axis=0)
+            # augment action
+            aug_action = deepcopy(action[mask])
+            action = np.concatenate([action, aug_action], axis=0)
+            # augment reward
+            aug_reward = deepcopy(reward[mask])
+            reward = np.concatenate([reward, aug_reward], axis=0)
+            # augment done
+            aug_done = deepcopy(done[mask])
+            done = np.concatenate([done, aug_done], axis=0)
+
+        return ob0, action, reward, ob1, done
 
     def get_aug_dim(self):
         return int(ORG_OB_DIM - OBSTACLE_IX.size)
@@ -279,6 +314,9 @@ class BodySpeedAugmentor(ObservationProcessor):
 #            logger.info("{}: {}".format(i+1, x))
 #        logger.info("-"*50)
 
+        # threshold = 0.2
+        # if np.abs(res[28] - res[30]) >= threshold:
+        #     logger.info("Distance between toes larger than {}".format(threshold))
         return res
 
     def get_aug_dim(self):
@@ -288,6 +326,51 @@ class BodySpeedAugmentor(ObservationProcessor):
 #        logger.info("ob_processor.reset()")
         self.last_observation = None
         self.obstacle_pos.clear()
+
+    def mirror_ob(self, ob0, action, reward, ob1, done, toe_dist_threshold):
+        """
+        Exchange left and right body parts (if it is pelvis rotation, negate)
+
+        condition: ONLY IF the distance betwen the 2 toes are larger than toe_dist_threshold
+        """
+
+        # sanity check
+        to_negate = np.asarray([0, 3])  # pelvis rotations
+
+        r_part_org = np.asarray([6, 7, 8, 12, 13, 14, 30, 31, 34, 35, 37])
+        r_part_aug = np.asarray([8, 12]) + ORG_OB_DIM
+        r_part = np.append(r_part_org, r_part_aug)
+
+        l_part_org = np.asarray([9, 10, 11, 15, 16, 17, 28, 29, 32, 33, 36])
+        l_part_aug = np.asarray([6, 10]) + ORG_OB_DIM
+        l_part = np.append(l_part_org, l_part_aug)
+
+        assert r_part.size == l_part.size
+        assert np.intersect1d(l_part, r_part).size == 0
+
+        # get indices of experiences that are qualified to mirror
+        l_toe_x_pos = ob0[:, TOE_L_IX]
+        r_toe_x_pos = ob0[:, TOE_R_IX]
+        mask = np.abs(l_toe_x_pos - r_toe_x_pos) >= toe_dist_threshold
+
+        if np.sum(mask) > 0:
+            # augment ob0
+            aug_ob0 = flip_observation(ob0[mask], to_negate, l_part, r_part)
+            ob0 = np.concatenate([ob0, aug_ob0], axis=0)
+            # augment ob1
+            aug_ob1 = flip_observation(ob1[mask], to_negate, l_part, r_part)
+            ob1 = np.concatenate([ob1, aug_ob1], axis=0)
+            # augment action
+            aug_action = deepcopy(action[mask])
+            action = np.concatenate([action, aug_action], axis=0)
+            # augment reward
+            aug_reward = deepcopy(reward[mask])
+            reward = np.concatenate([reward, aug_reward], axis=0)
+            # augment done
+            aug_done = deepcopy(done[mask])
+            done = np.concatenate([done, aug_done], axis=0)
+
+        return ob0, action, reward, ob1, done
 
 
 class SecondOrderAugmentor(ObservationProcessor):

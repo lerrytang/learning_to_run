@@ -265,19 +265,9 @@ class DDPG(Agent):
             ob0, action, reward, ob1, done = self.memory.sample(self.config["batch_size"])
 
             # mirror observation
-            if self.config["mirror_ob"]:
-                mirror_ob0 = self.ob_processor.mirror_ob(ob0)
-                mirror_ob1 = self.ob_processor.mirror_ob(ob1)
-                if mirror_ob0 is not None and mirror_ob1 is not None:
-                    mirror_action = action.copy()
-                    if not self.jump:
-                        mirror_action[:, :9] = action[:, 9:]
-                        mirror_action[:, 9:] = action[:, :9]
-                    ob0 = np.concatenate([ob0, mirror_ob0], axis=0)
-                    action = np.concatenate([action, mirror_action], axis=0)
-                    reward = np.concatenate([reward, reward], axis=0)
-                    ob1 = np.concatenate([ob1, mirror_ob1], axis=0)
-                    done = np.concatenate([done, done], axis=0)
+            if self.config["mirror_ob"] and ob0 is not None:
+                ob0, action, reward, ob1, done = \
+                    self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, self.config["toe_dist_threshold"])
 
             # train critic
             critic_hist = self._train_critic(ob0, action, reward, ob1, done)
@@ -311,8 +301,7 @@ class DDPG(Agent):
         episode_losses = []
         episode_qval = []
         action_hist = None
-        noisy_action_hist = None
-        observation_hist = None
+        noisy_hist = None
         reward_hist = []
         steps_hist = []
         new_ob = self.env.reset()
@@ -333,15 +322,16 @@ class DDPG(Agent):
                 assert not done, "Episode finished in one step"
                 continue
 
-            # select and execute action
+            # select action and add noise
             new_ob = self.ob_processor.process(new_ob)
             observation = np.reshape(new_ob, [1, -1])
-            observation_hist = self.append_hist(observation_hist, observation)
             action, qval = self.actor.predict(observation)
+            noise = self.rand_process.sample()
+            noisy_hist = self.append_hist(noisy_hist, noise)
+
+            # apply action
+            action = np.clip(action + noise, self.act_low, self.act_high)
             action_hist = self.append_hist(action_hist, action)
-            action += self.rand_process.sample()
-            action = np.clip(action, self.act_low, self.act_high)
-            noisy_action_hist = self.append_hist(noisy_action_hist, action)
             act_to_apply = action.squeeze()
             if self.jump:
                 act_to_apply = np.tile(act_to_apply, 2)
@@ -379,6 +369,11 @@ class DDPG(Agent):
                                                                                                           episode_losses),
                                                                                                       np.mean(
                                                                                                           episode_qval)))
+                self.logger.info("max(noise)=\n{}".format(np.max(noisy_hist, axis=0)))
+                self.logger.info("min(noise)=\n{}".format(np.min(noisy_hist, axis=0)))
+                self.logger.info("avg(action)=\n{}".format(np.mean(action_hist, axis=0)))
+                self.logger.info("-"*50)
+
                 self.save_models()
 
                 if episode_n % self.config["save_snapshot_every"] == 0:
@@ -391,8 +386,7 @@ class DDPG(Agent):
                 episode_losses = []
                 episode_qval = []
                 action_hist = None
-                noisy_action_hist = None
-                observation_hist = None
+                noisy_hist = None
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
                 first_frame = True

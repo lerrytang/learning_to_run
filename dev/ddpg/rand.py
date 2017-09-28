@@ -6,11 +6,11 @@ class OrnsteinUhlenbeckProcess:
     Ornstein Uhlenbeck Process
     """
     
-    def __init__(self, action_dim, theta, sigma_init, sigma_min=0, annealing_steps=0):
+    def __init__(self, action_dim, theta, sigma_init, init_val=0.0, sigma_min=0, annealing_steps=0):
         self.action_dim = action_dim
         self.theta = theta
 
-        self.noise_var = np.zeros(action_dim)
+        self.noise_var = np.ones(action_dim) * init_val
         self.sigma = sigma_init
         self.sigma_min = max(sigma_min, 0)
         assert self.sigma>=self.sigma_min
@@ -33,7 +33,7 @@ class OUPfromWiki:
     Ornstein Uhlenbeck Process whose implementation follows wikipedia
     """
 
-    def __init__(self, action_dim, theta, sigma, scale_min=0, annealing_steps=0):
+    def __init__(self, action_dim, theta, sigma, init_val=0.0, scale_min=0, annealing_steps=0):
         self.action_dim = action_dim
         self.theta = theta
         self.sigma = sigma
@@ -45,8 +45,8 @@ class OUPfromWiki:
         else:
             self.scale_delta = 0.0
 
-        # x0 initialized to all zeros
-        self.xt = np.zeros(action_dim)
+        # initialize x0
+        self.xt = np.ones(action_dim) * init_val
 
     def sample(self):
         """
