@@ -28,33 +28,35 @@ class OrnsteinUhlenbeckProcess:
         return noise
 
 
-if __name__ == "__main__":
+class OUPfromWiki:
+    """
+    Ornstein Uhlenbeck Process whose implementation follows wikipedia
+    """
 
-    import logging
-    logging.basicConfig(level=logging.INFO,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
+    def __init__(self, action_dim, theta, sigma, scale_min=0, annealing_steps=0):
+        self.action_dim = action_dim
+        self.theta = theta
+        self.sigma = sigma
 
-    num_rand = 100
-    action_dim = 3
-    sigma_init = 0.2
-    sigma_min = 0
-    annealing_steps = 100
+        self.scale = 1.0
+        self.scale_min = scale_min
+        if annealing_steps > 0:
+            self.scale_delta = (self.scale - scale_min) / annealing_steps
+        else:
+            self.scale_delta = 0.0
 
-    oup = OrnsteinUhlenbeckProcess(
-            action_dim=action_dim,
-            theta=.15,
-            sigma_init=sigma_init,
-            sigma_min=sigma_min,
-            annealing_steps=annealing_steps)
+        # x0 initialized to all zeros
+        self.xt = np.zeros(action_dim)
 
-    samples = np.zeros([num_rand, action_dim])
-    for i in xrange(num_rand):
-        samples[i] = oup.sample()
+    def sample(self):
+        """
+        {\displaystyle dx_{t}=\theta (\mu -x_{t})\,dt+\sigma \,dW_{t}}
+        :return:
+        """
+        delta_xt = self.theta * (-1.0 * self.xt) + self.sigma * np.random.randn(self.action_dim)
+        self.xt += delta_xt
+        noise = self.scale * self.xt
+        self.scale = max(self.scale - self.scale_delta, self.scale_min)
+        return noise
 
-    logger.info("sigma_init={}, sigma_min={}, annealing_steps={}".format(
-        sigma_init, sigma_min, annealing_steps))
-    logger.info("mean(samples)={}".format(samples.mean(axis=0)))
-    logger.info("std(samples)={}".format(samples.std(axis=0)))
 

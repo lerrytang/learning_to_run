@@ -1,5 +1,6 @@
 from agent import Agent
-from rand import OrnsteinUhlenbeckProcess as OUP
+# from rand import OrnsteinUhlenbeckProcess as OUP
+from rand import OUPfromWiki as OUP
 from mem import ReplayBuffer as RB
 from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
 from ob_processor import NormalizedFirstOrder#, NormalizedSecondOrder
@@ -32,8 +33,8 @@ def create_rand_process(env, config):
     return OUP(
         action_dim=act_dim,
         theta=config["theta"],
-        sigma_init=config["sigma_init"],
-        sigma_min=config["sigma_min"],
+        sigma=config["sigma_init"],
+        scale_min=config["sigma_min"],
         annealing_steps=config["annealing_steps"])
 
 
