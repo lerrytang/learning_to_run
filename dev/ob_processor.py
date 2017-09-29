@@ -85,7 +85,7 @@ OBSTACLE_IX = np.asarray([38, 39, 40])
 def flip_observation(ob, to_negate, l_part, r_part):
     res = deepcopy(ob)
     res[:, to_negate] *= -1
-    tmp = res[:, l_part]
+    tmp = res[:, l_part].copy()
     res[:, l_part] = res[:, r_part]
     res[:, r_part] = tmp
     return res
