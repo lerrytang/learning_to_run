@@ -26,7 +26,8 @@ DDPG:
     ob_processor: "norm1storder"
     mirror_ob: True
     lrelu: -1
-    toe_dist_threshold: 0.2
+    toe_dist_threshold: 0.1
+    reward_scale: 10.0
 TRPO:
     batch_size: 5000
     n_envs: 16

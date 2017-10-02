@@ -269,6 +269,11 @@ class DDPG(Agent):
                 ob0, action, reward, ob1, done = \
                     self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, self.config["toe_dist_threshold"])
 
+            # reward scale
+            if ob0 is not None:
+                assert self.config["reward_scale"] > 0
+                reward *= self.config["reward_scale"]
+
             # train critic
             critic_hist = self._train_critic(ob0, action, reward, ob1, done)
             # DEBUG
