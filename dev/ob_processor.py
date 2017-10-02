@@ -67,6 +67,7 @@ radius_obstacle     40
 """
 
 MAX_NUM_OBSTACLE = 3
+NUM_CTRL_PER_LEG = 9
 
 TOE_L_IX = 28
 TOE_R_IX = 30
@@ -185,9 +186,10 @@ class NormalizedFirstOrder(ObservationProcessor):
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
-            tmp = aug_action[:, 9].copy()
-            aug_action[:, 9] = aug_action[:, 9:]
-            aug_action[:, 9:] = tmp
+            if aug_action.shape[1] > NUM_CTRL_PER_LEG:
+                tmp = aug_action[:, NUM_CTRL_PER_LEG].copy()
+                aug_action[:, NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
+                aug_action[:, NUM_CTRL_PER_LEG:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
             aug_reward = deepcopy(reward[mask])
@@ -367,9 +369,10 @@ class BodySpeedAugmentor(ObservationProcessor):
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
-            tmp = aug_action[:, 9].copy()
-            aug_action[:, 9] = aug_action[:, 9:]
-            aug_action[:, 9:] = tmp
+            if aug_action.shape[1] > NUM_CTRL_PER_LEG:
+                tmp = aug_action[:, NUM_CTRL_PER_LEG].copy()
+                aug_action[:, NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
+                aug_action[:, NUM_CTRL_PER_LEG:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
             aug_reward = deepcopy(reward[mask])
