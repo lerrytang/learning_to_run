@@ -185,6 +185,9 @@ class NormalizedFirstOrder(ObservationProcessor):
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
+            tmp = aug_action[:, 9].copy()
+            aug_action[:, 9] = aug_action[:, 9:]
+            aug_action[:, 9:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
             aug_reward = deepcopy(reward[mask])
@@ -192,6 +195,8 @@ class NormalizedFirstOrder(ObservationProcessor):
             # augment done
             aug_done = deepcopy(done[mask])
             done = np.concatenate([done, aug_done], axis=0)
+
+
 
         return ob0, action, reward, ob1, done
 
@@ -362,6 +367,9 @@ class BodySpeedAugmentor(ObservationProcessor):
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
+            tmp = aug_action[:, 9].copy()
+            aug_action[:, 9] = aug_action[:, 9:]
+            aug_action[:, 9:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
             aug_reward = deepcopy(reward[mask])
