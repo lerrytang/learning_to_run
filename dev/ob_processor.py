@@ -187,8 +187,8 @@ class NormalizedFirstOrder(ObservationProcessor):
             # augment action
             aug_action = deepcopy(action[mask])
             if aug_action.shape[1] > NUM_CTRL_PER_LEG:
-                tmp = aug_action[:, NUM_CTRL_PER_LEG].copy()
-                aug_action[:, NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
+                tmp = aug_action[:, :NUM_CTRL_PER_LEG].copy()
+                aug_action[:, :NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
                 aug_action[:, NUM_CTRL_PER_LEG:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
@@ -370,8 +370,8 @@ class BodySpeedAugmentor(ObservationProcessor):
             # augment action
             aug_action = deepcopy(action[mask])
             if aug_action.shape[1] > NUM_CTRL_PER_LEG:
-                tmp = aug_action[:, NUM_CTRL_PER_LEG].copy()
-                aug_action[:, NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
+                tmp = aug_action[:, :NUM_CTRL_PER_LEG].copy()
+                aug_action[:, :NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
                 aug_action[:, NUM_CTRL_PER_LEG:] = tmp
             action = np.concatenate([action, aug_action], axis=0)
             # augment reward
