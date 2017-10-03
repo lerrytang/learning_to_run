@@ -325,20 +325,20 @@ class DDPG(Agent):
         new_ob = self.env.reset()
         self.ob_processor.reset()
         zero_action = np.zeros(self.env.action_space.shape)
-        first_frame = True
+        # first_frame = True
         done = False
 
         train_step_counter = 0
         while episode_n < total_episodes:
 
             # ignore first frame because it contains phantom obstacle
-            if not done and first_frame:
-                new_ob, reward, done, info = self.env.step(zero_action)
-                episode_reward += reward
-                episode_steps += 1
-                first_frame = False
-                assert not done, "Episode finished in one step"
-                continue
+            # if not done and first_frame:
+            #     new_ob, reward, done, info = self.env.step(zero_action)
+            #     episode_reward += reward
+            #     episode_steps += 1
+            #     first_frame = False
+            #     assert not done, "Episode finished in one step"
+            #     continue
 
             # select action and add noise
             new_ob = self.ob_processor.process(new_ob)
@@ -407,7 +407,7 @@ class DDPG(Agent):
                 noisy_hist = None
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
-                first_frame = True
+                # first_frame = True
                 done = False
 
         self.save_models()
@@ -423,18 +423,18 @@ class DDPG(Agent):
         new_ob = self.env.reset()
         self.ob_processor.reset()
         zero_action = np.zeros(self.env.action_space.shape)
-        first_frame = True
+        # first_frame = True
 
         while True:
 
-            # ignore first frame because it contains phantom obstacle
-            if first_frame:
-                new_ob, reward, done, info = self.env.step(zero_action)
-                episode_reward += reward
-                episode_steps += 1
-                first_frame = False
-                assert not done, "Episode finished in one step"
-                continue
+            # # ignore first frame because it contains phantom obstacle
+            # if first_frame:
+            #     new_ob, reward, done, info = self.env.step(zero_action)
+            #     episode_reward += reward
+            #     episode_steps += 1
+            #     first_frame = False
+            #     assert not done, "Episode finished in one step"
+            #     continue
 
             new_ob = self.ob_processor.process(new_ob)
             observation = np.reshape(new_ob, [1, -1])
@@ -446,7 +446,7 @@ class DDPG(Agent):
             new_ob, reward, done, info = self.env.step(act_to_apply)
             episode_reward += reward
             episode_steps += 1
-            done = done | (episode_steps >= self.config["max_steps"])
+            done |= (episode_steps >= self.config["max_steps"])
             if done:
                 episode_count += 1
                 self.logger.info("Episode={}, steps={}, reward={}".format(
@@ -456,7 +456,7 @@ class DDPG(Agent):
                 episode_reward = 0
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
-                first_frame = True
+                # first_frame = True
                 if not new_ob:
                     break
                 if episode_count >= 5:
