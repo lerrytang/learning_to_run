@@ -106,6 +106,9 @@ class ObservationProcessor(object):
     def mirror_ob(self, ob):
         return None
 
+    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+        return reward
+
 
 class NormalizedFirstOrder(ObservationProcessor):
     """
@@ -198,9 +201,19 @@ class NormalizedFirstOrder(ObservationProcessor):
             aug_done = deepcopy(done[mask])
             done = np.concatenate([done, aug_done], axis=0)
 
-
-
         return ob0, action, reward, ob1, done
+
+    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+        avg_body_vel0 = ob0[:, BODY_PARTS_IX + ORG_OB_DIM].mean(axis=1)
+        avg_body_vel1 = ob1[:, BODY_PARTS_IX + ORG_OB_DIM].mean(axis=1)
+        reward_cp = deepcopy(reward)
+        if delta_vel:
+            reward_cp += alpha * (avg_body_vel1 - avg_body_vel0)
+        else:
+            reward_cp += alpha * avg_body_vel1
+        # logger.info("reward before shaping: {}".format(reward.mean()))
+        # logger.info("reward after shaping: {}".format(reward_cp.mean()))
+        return reward_cp
 
     def get_aug_dim(self):
         return int(ORG_OB_DIM - OBSTACLE_IX.size)
@@ -382,6 +395,18 @@ class BodySpeedAugmentor(ObservationProcessor):
             done = np.concatenate([done, aug_done], axis=0)
 
         return ob0, action, reward, ob1, done
+
+    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+        avg_body_vel0 = ob0[:, ORG_OB_DIM:].mean(axis=1)
+        avg_body_vel1 = ob1[:, ORG_OB_DIM:].mean(axis=1)
+        reward_cp = deepcopy(reward)
+        if delta_vel:
+            reward_cp += alpha * (avg_body_vel1 - avg_body_vel0)
+        else:
+            reward_cp += alpha * avg_body_vel1
+        # logger.info("reward before shaping: {}".format(reward.mean()))
+        # logger.info("reward after shaping: {}".format(reward_cp.mean()))
+        return reward_cp
 
 
 class SecondOrderAugmentor(ObservationProcessor):

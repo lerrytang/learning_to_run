@@ -114,42 +114,45 @@ class DDPG(Agent):
     def _build_critic_part(self, ob_input, act_input, critic_hiddens, lrelu, trainable=True):
 
         assert self.config["merge_at_layer"] <= len(critic_hiddens)
-        include_bn = True
 
         # critic input part
         if self.config["use_bn"]:
             x = BatchNormalization(trainable=trainable,
-                                   center=False, scale=False,
+                                   center=False,
+                                   scale=False,
                                    name="critic_bn_input")(ob_input)
         else:
             x = ob_input
         if self.config["merge_at_layer"] == 0:
             x = Concatenate(name="combined_input")([x, act_input])
-            include_bn = False
 
         # critic hidden part
         for i, num_hiddens in enumerate(critic_hiddens):
-            x = Dense(num_hiddens, activation=None, trainable=trainable,
+            x = Dense(num_hiddens,
+                      activation=None,
+                      trainable=trainable,
                       kernel_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
                       bias_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
-                      kernel_regularizer=l2(self.config["critic_l2"]), name="critic_fc{}".format(i + 1))(x)
+                      kernel_regularizer=l2(self.config["critic_l2"]),
+                      name="critic_fc{}".format(i + 1))(x)
+
             if lrelu > 0:
-                x = LeakyReLU(name="critic_lrelu{}".format(i + 1))(x)
+                x = LeakyReLU(alpha=lrelu,
+                              name="critic_lrelu{}".format(i + 1))(x)
             else:
-                x = Activation("relu", name="critic_relu{}".format(i + 1))(x)
-            if self.config["use_bn"] and include_bn:
-                x = BatchNormalization(trainable=trainable,
-                                       center=False, scale=False,
-                                       name="critic_bn{}".format(i + 1))(x)
+                x = Activation("relu",
+                               name="critic_relu{}".format(i + 1))(x)
+
             if self.config["merge_at_layer"] == i + 1:
                 x = Concatenate(name="combined_input")([x, act_input])
-                include_bn = False
 
         # critic output
-        qval = Dense(1, activation="linear", trainable=trainable,
+        qval = Dense(1, activation="linear",
+                     trainable=trainable,
                      kernel_initializer=RandomUniform(minval=-3e-4, maxval=3e-4),
                      bias_initializer=RandomUniform(minval=-3e-4, maxval=3e-4),
-                     kernel_regularizer=l2(self.config["critic_l2"]), name="qval")(x)
+                     kernel_regularizer=l2(self.config["critic_l2"]),
+                     name="qval")(x)
         return qval
 
     def create_actor(self, actor_hiddens, critic_hiddens, lrelu, trainable=True):
@@ -157,31 +160,36 @@ class DDPG(Agent):
         ob_input = Input(shape=self.ob_dim, name="ob_input")
         if self.config["use_bn"]:
             x = BatchNormalization(trainable=trainable,
-                                   center=False, scale=False,
+                                   center=False,
+                                   scale=False,
                                    name="actor_bn_input")(ob_input)
         else:
             x = ob_input
 
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
-            x = Dense(num_hiddens, activation=None, trainable=trainable,
+            x = Dense(num_hiddens,
+                      activation=None,
+                      trainable=trainable,
                       kernel_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
                       bias_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
-                      kernel_regularizer=l2(self.config["actor_l2"]), name="actor_fc{}".format(i + 1))(x)
+                      kernel_regularizer=l2(self.config["actor_l2"]),
+                      name="actor_fc{}".format(i + 1))(x)
             if lrelu > 0:
-                x = LeakyReLU(name="actor_lrelu{}".format(i + 1))(x)
+                x = LeakyReLU(alpha=lrelu,
+                              name="actor_lrelu{}".format(i + 1))(x)
             else:
-                x = Activation("relu", name="actor_relu{}".format(i + 1))(x)
-            if self.config["use_bn"]:
-                x = BatchNormalization(trainable=trainable,
-                                       center=False, scale=False,
-                                       name="actor_bn{}".format(i + 1))(x)
+                x = Activation("relu",
+                               name="actor_relu{}".format(i + 1))(x)
 
         # action output
-        x = Dense(self.act_dim[0], activation="tanh", trainable=trainable,
+        x = Dense(self.act_dim[0],
+                  activation="tanh",
+                  trainable=trainable,
                   kernel_initializer=RandomUniform(minval=-3e-3, maxval=3e-3),
                   bias_initializer=RandomUniform(minval=-3e-3, maxval=3e-3),
-                  kernel_regularizer=l2(self.config["actor_l2"]), name="action")(x)
+                  kernel_regularizer=l2(self.config["actor_l2"]),
+                  name="action")(x)
         action = Lambda(lambda x: 0.5 * (x + 1), name="action_scaled")(x)
 
         # untrainable critic part
@@ -226,8 +234,8 @@ class DDPG(Agent):
         for l in actor_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            #            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, tau)
+            t = 1.0 if "_bn_input" in l else tau
+            self._copy_layer_weights(src_layer, tar_layer, t)
 
     def _copy_critic_weights(self, src_model, tar_model, tau=1.0):
         critic_layers = ["qval"]
@@ -235,8 +243,8 @@ class DDPG(Agent):
         for l in critic_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            #            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, tau)
+            t = 1.0 if "_bn_input" in l else tau
+            self._copy_layer_weights(src_layer, tar_layer, t)
 
     # ==================================================== #
     #          Traing Models                               #
@@ -268,6 +276,11 @@ class DDPG(Agent):
             if self.config["mirror_ob"] and ob0 is not None:
                 ob0, action, reward, ob1, done = \
                     self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, self.config["toe_dist_threshold"])
+
+            # reward shaping
+            reward = self.ob_processor.reward_shaping(ob0,ob1, reward,
+                                                      self.config["rs_weight"],
+                                                      self.config["rs_delta_vel"])
 
             # reward scale
             if ob0 is not None:
