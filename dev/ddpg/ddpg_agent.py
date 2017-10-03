@@ -278,7 +278,7 @@ class DDPG(Agent):
                     self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, self.config["toe_dist_threshold"])
 
             # reward shaping
-            reward = self.ob_processor.reward_shaping(ob0,ob1, reward,
+            reward = self.ob_processor.reward_shaping(ob0, ob1, reward,
                                                       self.config["rs_weight"],
                                                       self.config["rs_delta_vel"])
 

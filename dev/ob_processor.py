@@ -78,6 +78,7 @@ PELVIS_Y_IX = 2
 X_NORMALIZE_INDICES = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
 
 BODY_PARTS_IX = np.arange(22, 36)
+
 PSOAS_IX = np.asarray([36, 37])
 OBSTACLE_X_IX = 38
 OBSTACLE_IX = np.asarray([38, 39, 40])
@@ -204,13 +205,10 @@ class NormalizedFirstOrder(ObservationProcessor):
         return ob0, action, reward, ob1, done
 
     def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
-        avg_body_vel0 = ob0[:, BODY_PARTS_IX + ORG_OB_DIM].mean(axis=1)
-        avg_body_vel1 = ob1[:, BODY_PARTS_IX + ORG_OB_DIM].mean(axis=1)
+        tar_xvel_ix = np.asarray([18, 22, 24, 26]) + ORG_OB_DIM
+        avg_body_vel = ob1[:, tar_xvel_ix].mean(axis=1)
         reward_cp = deepcopy(reward)
-        if delta_vel:
-            reward_cp += alpha * (avg_body_vel1 - avg_body_vel0)
-        else:
-            reward_cp += alpha * avg_body_vel1
+        reward_cp += alpha * avg_body_vel
         # logger.info("reward before shaping: {}".format(reward.mean()))
         # logger.info("reward after shaping: {}".format(reward_cp.mean()))
         return reward_cp
@@ -397,13 +395,10 @@ class BodySpeedAugmentor(ObservationProcessor):
         return ob0, action, reward, ob1, done
 
     def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
-        avg_body_vel0 = ob0[:, ORG_OB_DIM:].mean(axis=1)
-        avg_body_vel1 = ob1[:, ORG_OB_DIM:].mean(axis=1)
+        tar_xvel_ix = np.asarray([4, 20, 41, 43, 45])
+        avg_body_vel = ob1[:, tar_xvel_ix].mean(axis=1)
         reward_cp = deepcopy(reward)
-        if delta_vel:
-            reward_cp += alpha * (avg_body_vel1 - avg_body_vel0)
-        else:
-            reward_cp += alpha * avg_body_vel1
+        reward_cp += alpha * avg_body_vel
         # logger.info("reward before shaping: {}".format(reward.mean()))
         # logger.info("reward after shaping: {}".format(reward_cp.mean()))
         return reward_cp
