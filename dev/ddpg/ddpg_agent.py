@@ -116,13 +116,7 @@ class DDPG(Agent):
         assert self.config["merge_at_layer"] <= len(critic_hiddens)
 
         # critic input part
-        if self.config["use_bn"]:
-            x = BatchNormalization(trainable=trainable,
-                                   center=False,
-                                   scale=False,
-                                   name="critic_bn_input")(ob_input)
-        else:
-            x = ob_input
+        x = ob_input
         if self.config["merge_at_layer"] == 0:
             x = Concatenate(name="combined_input")([x, act_input])
 
@@ -136,12 +130,14 @@ class DDPG(Agent):
                       kernel_regularizer=l2(self.config["critic_l2"]),
                       name="critic_fc{}".format(i + 1))(x)
 
+            if self.config["use_bn"]:
+                x = BatchNormalization(trainable=trainable,
+                                       name="critic_bn{}".format(i + 1))(x)
+
             if lrelu > 0:
-                x = LeakyReLU(alpha=lrelu,
-                              name="critic_lrelu{}".format(i + 1))(x)
+                x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
             else:
-                x = Activation("relu",
-                               name="critic_relu{}".format(i + 1))(x)
+                x = Activation("relu", name = "critic_relu{}".format(i + 1))(x)
 
             if self.config["merge_at_layer"] == i + 1:
                 x = Concatenate(name="combined_input")([x, act_input])
@@ -158,13 +154,7 @@ class DDPG(Agent):
     def create_actor(self, actor_hiddens, critic_hiddens, lrelu, trainable=True):
         # actor input part
         ob_input = Input(shape=self.ob_dim, name="ob_input")
-        if self.config["use_bn"]:
-            x = BatchNormalization(trainable=trainable,
-                                   center=False,
-                                   scale=False,
-                                   name="actor_bn_input")(ob_input)
-        else:
-            x = ob_input
+        x = ob_input
 
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
@@ -175,12 +165,15 @@ class DDPG(Agent):
                       bias_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
                       kernel_regularizer=l2(self.config["actor_l2"]),
                       name="actor_fc{}".format(i + 1))(x)
+
+            if self.config["use_bn"]:
+                x = BatchNormalization(trainable=trainable,
+                                       name="actor_bn{}".format(i + 1))(x)
+
             if lrelu > 0:
-                x = LeakyReLU(alpha=lrelu,
-                              name="actor_lrelu{}".format(i + 1))(x)
+                x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)
             else:
-                x = Activation("relu",
-                               name="actor_relu{}".format(i + 1))(x)
+                x = Activation("relu", name = "actor_relu{}".format(i + 1))(x)
 
         # action output
         x = Dense(self.act_dim[0],
@@ -234,8 +227,7 @@ class DDPG(Agent):
         for l in actor_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, t)
+            self._copy_layer_weights(src_layer, tar_layer, tau)
 
     def _copy_critic_weights(self, src_model, tar_model, tau=1.0):
         critic_layers = ["qval"]
@@ -243,11 +235,10 @@ class DDPG(Agent):
         for l in critic_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
-            t = 1.0 if "_bn_input" in l else tau
-            self._copy_layer_weights(src_layer, tar_layer, t)
+            self._copy_layer_weights(src_layer, tar_layer, tau)
 
     # ==================================================== #
-    #          Traing Models                               #
+    #          Training Models                             #
     # ==================================================== #
 
     def _train_critic(self, ob0, action, reward, ob1, done):
@@ -289,10 +280,10 @@ class DDPG(Agent):
 
             # train critic
             critic_hist = self._train_critic(ob0, action, reward, ob1, done)
-            # DEBUG
-            aa, q_actor = self.actor.predict_on_batch([ob0])
-            q_critic = self.critic.predict_on_batch([ob0, aa])
-            assert np.allclose(q_actor, q_critic)
+            # # DEBUG
+            # aa, q_actor = self.actor.predict_on_batch([ob0])
+            # q_critic = self.critic.predict_on_batch([ob0, aa])
+            # assert np.allclose(q_actor, q_critic)
             # train actor
             actor_hist = self._train_actor(ob0, action, reward, ob1, done)
             # soft update weights
@@ -324,21 +315,9 @@ class DDPG(Agent):
         steps_hist = []
         new_ob = self.env.reset()
         self.ob_processor.reset()
-        zero_action = np.zeros(self.env.action_space.shape)
-        # first_frame = True
-        done = False
 
         train_step_counter = 0
         while episode_n < total_episodes:
-
-            # ignore first frame because it contains phantom obstacle
-            # if not done and first_frame:
-            #     new_ob, reward, done, info = self.env.step(zero_action)
-            #     episode_reward += reward
-            #     episode_steps += 1
-            #     first_frame = False
-            #     assert not done, "Episode finished in one step"
-            #     continue
 
             # select action and add noise
             new_ob = self.ob_processor.process(new_ob)
@@ -373,30 +352,32 @@ class DDPG(Agent):
                     episode_losses.append(loss)
                 train_step_counter = 0
 
+            done |= (episode_steps >= self.config["max_steps"])
+
             # on episode end
-            if done or episode_steps >= self.config["max_steps"]:
+            if done:
                 episode_n += 1
                 reward_hist.append(episode_reward)
                 steps_hist.append(episode_steps)
 
+                abs_noise = np.abs(noisy_hist)
                 self.logger.info(
-                    "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}".format(episode_n,
-                                                                                                      episode_steps,
-                                                                                                      episode_reward,
-                                                                                                      np.mean(
-                                                                                                          episode_losses),
-                                                                                                      np.mean(
-                                                                                                          episode_qval)))
-                self.logger.info("max(noise)=\n{}".format(np.max(noisy_hist, axis=0)))
-                self.logger.info("min(noise)=\n{}".format(np.min(noisy_hist, axis=0)))
-                self.logger.info("avg(action)=\n{}".format(np.mean(action_hist, axis=0)))
-                self.logger.info("-"*50)
-
-                self.save_models()
+                    "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
+                    "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(episode_n,
+                                                                                episode_steps,
+                                                                                episode_reward,
+                                                                                np.mean(
+                                                                                    episode_losses),
+                                                                                np.mean(
+                                                                                    episode_qval),
+                                                                                np.min(abs_noise), np.max(abs_noise),
+                                                                                np.min(action_hist), np.max(action_hist)
+                                                                                ))
 
                 if episode_n % self.config["save_snapshot_every"] == 0:
+                    self.save_models()
                     self.save_memory()
-                    self.logger.info("Replay buffer saved.")
+                    self.logger.info("Snapshot saved.")
 
                 # reset values
                 episode_reward = 0
@@ -407,7 +388,6 @@ class DDPG(Agent):
                 noisy_hist = None
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
-                # first_frame = True
                 done = False
 
         self.save_models()
@@ -422,19 +402,8 @@ class DDPG(Agent):
         episode_steps = 0
         new_ob = self.env.reset()
         self.ob_processor.reset()
-        zero_action = np.zeros(self.env.action_space.shape)
-        # first_frame = True
 
         while True:
-
-            # # ignore first frame because it contains phantom obstacle
-            # if first_frame:
-            #     new_ob, reward, done, info = self.env.step(zero_action)
-            #     episode_reward += reward
-            #     episode_steps += 1
-            #     first_frame = False
-            #     assert not done, "Episode finished in one step"
-            #     continue
 
             new_ob = self.ob_processor.process(new_ob)
             observation = np.reshape(new_ob, [1, -1])
@@ -456,10 +425,9 @@ class DDPG(Agent):
                 episode_reward = 0
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
-                # first_frame = True
                 if not new_ob:
                     break
-                if episode_count >= 5:
+                if episode_count >= 10:
                     break
 
         return all_rewards
