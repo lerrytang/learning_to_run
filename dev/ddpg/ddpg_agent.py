@@ -12,6 +12,7 @@ from keras.regularizers import l2
 from keras.initializers import VarianceScaling, RandomUniform
 from keras.optimizers import Adam
 import keras.backend as K
+from .layer_norm import LayerNorm
 
 import numpy as np
 import os
@@ -134,6 +135,9 @@ class DDPG(Agent):
                 x = BatchNormalization(trainable=trainable,
                                        name="critic_bn{}".format(i + 1))(x)
 
+            if self.config["use_ln"]:
+                x = LayerNorm(name="critic_ln{}".format(i + 1))(x)
+
             if lrelu > 0:
                 x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
             else:
@@ -169,6 +173,9 @@ class DDPG(Agent):
             if self.config["use_bn"]:
                 x = BatchNormalization(trainable=trainable,
                                        name="actor_bn{}".format(i + 1))(x)
+
+            if self.config["use_ln"]:
+                x = LayerNorm(name="actor_ln{}".format(i + 1))(x)
 
             if lrelu > 0:
                 x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)
@@ -374,8 +381,9 @@ class DDPG(Agent):
                                                                                 np.min(action_hist), np.max(action_hist)
                                                                                 ))
 
+                self.save_models()
+
                 if episode_n % self.config["save_snapshot_every"] == 0:
-                    self.save_models()
                     self.save_memory()
                     self.logger.info("Snapshot saved.")
 

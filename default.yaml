@@ -23,13 +23,14 @@ DDPG:
     annealing_steps: 4000000
     actor_hiddens: [128, 128, 64, 64]
     critic_hiddens: [128, 128, 64, 64]
-    ob_processor: "norm1storder"
+    ob_processor: "bodyspeed"
     mirror_ob: False
     rs_weight: 1.0
     rs_delta_vel: False
     lrelu: -1
     toe_dist_threshold: 0.1
     reward_scale: 10.0
+    use_ln: True
 TRPO:
     batch_size: 5000
     n_envs: 16
