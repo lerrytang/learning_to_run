@@ -23,9 +23,9 @@ DDPG:
     annealing_steps: 4000000
     actor_hiddens: [128, 128, 64, 64]
     critic_hiddens: [128, 128, 64, 64]
-    ob_processor: "bodyspeed"
-    mirror_ob: False
-    rs_weight: 1.0
+    ob_processor: "2ndround"
+    mirror_ob: True
+    rs_weight: 0.0005
     rs_delta_vel: False
     lrelu: -1
     toe_dist_threshold: 0.1

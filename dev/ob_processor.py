@@ -21,7 +21,7 @@ next obstacle: x distance from the pelvis, y position of the center relative to 
 pos_rot_pelvis      0
 pos_x_pelvis        1
 pos_y_pelvis        2
-vel_rot_pelvis      3
+vel_rot_pelvis      3  (about the z-axis)
 vel_x_pelvis        4
 vel_y_pelvis        5
 
@@ -66,6 +66,48 @@ pos_y_obstacle      39
 radius_obstacle     40
 """
 
+OB_NAMES = ["pos_rot_pelvis",
+            "pos_x_pelvis",
+            "pos_y_pelvis",
+            "vel_rot_pelvis",
+            "vel_x_pelvis",
+            "vel_y_pelvis",
+            "rot_hip_r",
+            "rot_knee_r",
+            "rot_ankle_r",
+            "rot_hip_l",
+            "rot_knee_l",
+            "rot_ankle_l",
+            "vel_hip_r",
+            "vel_knee_r",
+            "vel_ankle_r",
+            "vel_hip_l",
+            "vel_knee_l",
+            "vel_ankle_l",
+            "pos_x_mass",
+            "pos_y_mass",
+            "vel_x_mass",
+            "vel_y_mass",
+            "pos_x_head",
+            "pos_y_head",
+            "pos_x_pelvis",
+            "pos_y_pelvis",
+            "pos_x_torso",
+            "pos_y_torso",
+            "pos_x_toes_l",
+            "pos_y_toes_l",
+            "pos_x_toes_r",
+            "pos_y_toes_r",
+            "pos_x_talus_l",
+            "pos_y_talus_l",
+            "pos_x_talus_r",
+            "pos_y_talus_r",
+            "muscle_psoas_l",
+            "muscle_psoas_r",
+            "pos_x_obstacle",
+            "pos_y_obstacle",
+            "radius_obstacle"]
+
 MAX_NUM_OBSTACLE = 3
 NUM_CTRL_PER_LEG = 9
 
@@ -73,20 +115,45 @@ TOE_L_IX = 28
 TOE_R_IX = 30
 
 ORG_OB_DIM = 41
+BODY_PARTS_IX = np.arange(22, 36)
+
 PELVIS_X_IX = 1
 PELVIS_Y_IX = 2
+PELVIS_X_VEL_IX = 4
+PELVIS_Y_VEL_IX = 5
 X_NORMALIZE_INDICES = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
 
-BODY_PARTS_IX = np.arange(22, 36)
+X_POS_INDICES = np.asarray([1, 18, 22, 24, 26, 28, 30, 32, 34])
+X_VEL_INDICES = np.arange(0, BODY_PARTS_IX.size, 2) + ORG_OB_DIM
+X_VEL_INDICES = np.concatenate([np.asarray([20,]), X_VEL_INDICES])
+
+Y_POS_INDICES = np.asarray([2, 19, 23, 25, 27, 29, 31, 33, 35])
+Y_VEL_INDICES = X_VEL_INDICES + 1
+
 
 PSOAS_IX = np.asarray([36, 37])
 OBSTACLE_X_IX = 38
 OBSTACLE_IX = np.asarray([38, 39, 40])
 
 
-def flip_observation(ob, to_negate, l_part, r_part):
+def print_action(action):
+    muscles = ["hamstrings",
+               "biceps femoris",
+               "gluteus maximus",
+               "iliopsoas",
+               "rectus femoris",
+               "vastus",
+               "gastrocnemius",
+               "soleus",
+               "tibialis anterior"]
+    if action.size > NUM_CTRL_PER_LEG:
+        muscles = [p + m for p in ["right ", "left "] for m in muscles]
+    for k, v in zip(muscles, action):
+        logger.info("{0:20} : {1}".format(k, v))
+
+
+def flip_observation(ob, l_part, r_part):
     res = deepcopy(ob)
-    res[:, to_negate] *= -1
     tmp = res[:, l_part].copy()
     res[:, l_part] = res[:, r_part]
     res[:, r_part] = tmp
@@ -104,7 +171,7 @@ class ObservationProcessor(object):
     def reset(self):
         pass
 
-    def mirror_ob(self, ob):
+    def mirror_ob(self, ob0, action, reward, ob1, done, threshold):
         return None
 
     def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
@@ -161,10 +228,6 @@ class NormalizedFirstOrder(ObservationProcessor):
         """
 
         # sanity check
-        to_negate_org = np.asarray([0, 3])  # pelvis rotations
-        to_negate_aug = to_negate_org + ORG_OB_DIM
-        to_negate = np.append(to_negate_org, to_negate_aug)
-
         r_part_org = np.asarray([6, 7, 8, 12, 13, 14, 30, 31, 34, 35, 37])
         r_part_aug = r_part_org + ORG_OB_DIM
         r_part = np.append(r_part_org, r_part_aug)
@@ -183,10 +246,10 @@ class NormalizedFirstOrder(ObservationProcessor):
 
         if np.sum(mask) > 0:
             # augment ob0
-            aug_ob0 = flip_observation(ob0[mask], to_negate, l_part, r_part)
+            aug_ob0 = flip_observation(ob0[mask], l_part, r_part)
             ob0 = np.concatenate([ob0, aug_ob0], axis=0)
             # augment ob1
-            aug_ob1 = flip_observation(ob1[mask], to_negate, l_part, r_part)
+            aug_ob1 = flip_observation(ob1[mask], l_part, r_part)
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
@@ -291,6 +354,145 @@ class NormalizedFirstOrder(ObservationProcessor):
 #         self.obstacle_pos.clear()
 
 
+class SecondRound(ObservationProcessor):
+    """
+    Observation processor for the 2nd round of the NIP challenge
+    """
+
+    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE):
+        self.max_num_ob = max_num_ob
+        self.last_observation = None
+        self.obstacle_pos = set()
+        self.ob_names = OB_NAMES + ["vel_x_head",
+                                    "vel_y_head",
+                                    "vel_x_pelvis",
+                                    "vel_y_pelvis",
+                                    "vel_x_torso",
+                                    "vel_y_torso",
+                                    "vel_x_toes_l",
+                                    "vel_y_toes_l",
+                                    "vel_x_toes_r",
+                                    "vel_y_toes_r",
+                                    "vel_x_talus_l",
+                                    "vel_y_talus_l",
+                                    "vel_x_talus_r",
+                                    "vel_y_talus_r"]
+        logger.info("X_VEL_INDICES={}".format([self.ob_names[i] for i in X_VEL_INDICES]))
+        logger.info("Y_VEL_INDICES={}".format([self.ob_names[i] for i in Y_VEL_INDICES]))
+
+    def _print_ob(self, ob):
+        assert len(self.ob_names) == ob.size
+        logger.info("----- Observation Vector -----")
+        for ob_name, ob_val in zip(self.ob_names, ob):
+            logger.info("{0:18}: {1}".format(ob_name, ob_val))
+        logger.info("-----------------------------")
+
+    def process(self, ob):
+
+        res = np.asarray(ob)
+
+        # deal with obstacles
+        if len(self.obstacle_pos) < self.max_num_ob:
+            ob_x = res[OBSTACLE_X_IX] + ob[PELVIS_X_IX]
+            self.obstacle_pos.add(ob_x)
+        else:
+            res[OBSTACLE_IX] = np.zeros_like(OBSTACLE_IX)
+
+        # calculate velocity for body, pelvis, talus and toes
+        cur_observation = np.asarray(ob)[BODY_PARTS_IX]
+        if self.last_observation is None:
+            res = np.concatenate([ob, np.zeros_like(BODY_PARTS_IX)], axis=0)
+        else:
+            ob_augmentation = (cur_observation - self.last_observation) * 100.0
+            res = np.concatenate([ob, ob_augmentation], axis=0)
+        self.last_observation = cur_observation
+
+        # logger.info("----- Before normalization -----")
+        # self._print_ob(res)
+
+        # make psoa forces zero-mean
+        res[PSOAS_IX] -= 1.0
+        # make x-pos relative
+        res[X_POS_INDICES] -= res[PELVIS_X_IX]
+        # make y-pos relative
+        res[Y_POS_INDICES] -= res[PELVIS_Y_IX]
+        # make x-vel relative
+        res[X_VEL_INDICES] -= res[PELVIS_X_VEL_IX]
+        # make y-vel relative
+        res[Y_VEL_INDICES] -= res[PELVIS_Y_VEL_IX]
+
+        # logger.info("----- After normalization ------")
+        # self._print_ob(res)
+
+        return res.tolist()
+
+    def get_aug_dim(self):
+        return BODY_PARTS_IX.size
+
+    def reset(self):
+        self.last_observation = None
+        self.obstacle_pos.clear()
+
+    def mirror_ob(self, ob0, action, reward, ob1, done, steps):
+
+        # sanity check
+        r_part_org = np.asarray([6, 7, 8, 12, 13, 14, 30, 31, 34, 35, 37])
+        r_part_aug = np.asarray([8, 9, 12, 13]) + ORG_OB_DIM
+        r_part = np.append(r_part_org, r_part_aug)
+        # logger.info("Right: {}".format([self.ob_names[i] for i in r_part]))
+
+        l_part_org = np.asarray([9, 10, 11, 15, 16, 17, 28, 29, 32, 33, 36])
+        l_part_aug = np.asarray([6, 7, 10, 11]) + ORG_OB_DIM
+        l_part = np.append(l_part_org, l_part_aug)
+        # logger.info("Left: {}".format([self.ob_names[i] for i in l_part]))
+
+        assert r_part.size == l_part.size
+        assert np.intersect1d(l_part, r_part).size == 0
+
+        # get indices of experiences that are qualified to mirror
+        mask = (steps >= 20)   # do not mirror the first 20 steps, to break symmetry
+
+        if np.sum(mask) > 0:
+            # augment ob0
+            aug_ob0 = flip_observation(ob0[mask], l_part, r_part)
+            # logger.info("<Observation>")
+            # self._print_ob(ob0[mask][0])
+            # logger.info("<Observation After flip>")
+            # self._print_ob(aug_ob0[0])
+            ob0 = np.concatenate([ob0, aug_ob0], axis=0)
+            # augment ob1
+            aug_ob1 = flip_observation(ob1[mask], l_part, r_part)
+            ob1 = np.concatenate([ob1, aug_ob1], axis=0)
+            # augment action
+            aug_action = deepcopy(action[mask])
+            if aug_action.shape[1] > NUM_CTRL_PER_LEG:
+                tmp = aug_action[:, :NUM_CTRL_PER_LEG].copy()
+                aug_action[:, :NUM_CTRL_PER_LEG] = aug_action[:, NUM_CTRL_PER_LEG:]
+                aug_action[:, NUM_CTRL_PER_LEG:] = tmp
+            # logger.info("<Action Before flip>")
+            # print_action(action[mask][0])
+            # logger.info("<Action After flip>")
+            # print_action(aug_action[0])
+            action = np.concatenate([action, aug_action], axis=0)
+            # augment reward
+            aug_reward = deepcopy(reward[mask])
+            reward = np.concatenate([reward, aug_reward], axis=0)
+            # augment done
+            aug_done = deepcopy(done[mask])
+            done = np.concatenate([done, aug_done], axis=0)
+
+        return ob0, action, reward, ob1, done
+
+    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+        xvel = ob1[:, X_VEL_INDICES] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
+        avg_body_vel = xvel.mean(axis=1)
+        reward_cp = deepcopy(reward)
+        reward_cp += alpha * avg_body_vel
+        # logger.info("reward before shaping: {}".format(reward.mean()))
+        # logger.info("reward after shaping: {}".format(reward_cp.mean()))
+        return reward_cp
+
+
 class BodySpeedAugmentor(ObservationProcessor):
 
     def __init__(self):
@@ -325,6 +527,7 @@ class BodySpeedAugmentor(ObservationProcessor):
         res = np.asarray(res)
 #        res[NORMALIZE_INDICE] -= res[PELVIS_IX]
         res[X_NORMALIZE_INDICES] -= res[X_NORMALIZE_INDICES].min()
+
         res = res.tolist()
 
 #        logger.info("observation:")
@@ -345,7 +548,7 @@ class BodySpeedAugmentor(ObservationProcessor):
         self.last_observation = None
         self.obstacle_pos.clear()
 
-    def mirror_ob(self, ob0, action, reward, ob1, done, toe_dist_threshold):
+    def mirror_ob(self, ob0, action, reward, ob1, done, threshold):
         """
         Exchange left and right body parts (if it is pelvis rotation, negate)
 
@@ -353,8 +556,6 @@ class BodySpeedAugmentor(ObservationProcessor):
         """
 
         # sanity check
-        to_negate = np.asarray([0, 3])  # pelvis rotations
-
         r_part_org = np.asarray([6, 7, 8, 12, 13, 14, 30, 31, 34, 35, 37])
         r_part_aug = np.asarray([8, 12]) + ORG_OB_DIM
         r_part = np.append(r_part_org, r_part_aug)
@@ -369,14 +570,14 @@ class BodySpeedAugmentor(ObservationProcessor):
         # get indices of experiences that are qualified to mirror
         l_toe_x_pos = ob0[:, TOE_L_IX]
         r_toe_x_pos = ob0[:, TOE_R_IX]
-        mask = np.abs(l_toe_x_pos - r_toe_x_pos) >= toe_dist_threshold
+        mask = np.abs(l_toe_x_pos - r_toe_x_pos) >= threshold
 
         if np.sum(mask) > 0:
             # augment ob0
-            aug_ob0 = flip_observation(ob0[mask], to_negate, l_part, r_part)
+            aug_ob0 = flip_observation(ob0[mask], l_part, r_part)
             ob0 = np.concatenate([ob0, aug_ob0], axis=0)
             # augment ob1
-            aug_ob1 = flip_observation(ob1[mask], to_negate, l_part, r_part)
+            aug_ob1 = flip_observation(ob1[mask], l_part, r_part)
             ob1 = np.concatenate([ob1, aug_ob1], axis=0)
             # augment action
             aug_action = deepcopy(action[mask])
@@ -391,6 +592,7 @@ class BodySpeedAugmentor(ObservationProcessor):
             # augment done
             aug_done = deepcopy(done[mask])
             done = np.concatenate([done, aug_done], axis=0)
+
 
         return ob0, action, reward, ob1, done
 

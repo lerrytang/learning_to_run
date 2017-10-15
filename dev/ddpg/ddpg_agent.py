@@ -3,7 +3,7 @@ from agent import Agent
 from rand import OUPfromWiki as OUP
 from mem import ReplayBuffer as RB
 from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
-from ob_processor import NormalizedFirstOrder#, NormalizedSecondOrder
+from ob_processor import NormalizedFirstOrder, SecondRound
 
 from keras.models import Model
 from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
@@ -46,8 +46,8 @@ def create_ob_processor(env, config):
         obp = SecondOrderAugmentor()
     elif config["ob_processor"] == "norm1storder":
         obp = NormalizedFirstOrder()
-    # elif config["ob_processor"] == "norm2ndorder":
-    #     obp = NormalizedSecondOrder()
+    elif config["ob_processor"] == "2ndround":
+        obp = SecondRound()
     else:
         obp = BodySpeedAugmentor()
     return obp
@@ -61,6 +61,8 @@ class DDPG(Agent):
     def __init__(self, env, config):
         self.env = env
         self.config = config
+        if "use_ln" not in self.config:
+            self.config["use_ln"] = False
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \
@@ -95,6 +97,7 @@ class DDPG(Agent):
         self.logger = config["logger"]
         self.log_dir = config["log_dir"]
         self.model_dir = config["model_dir"] if "model_dir" in config else self.log_dir
+
 
     # ==================================================== #
     #           Building Models                            #
@@ -268,12 +271,12 @@ class DDPG(Agent):
         if self.memory.size < self.config["memory_warmup"]:
             return 0, 0
         else:
-            ob0, action, reward, ob1, done = self.memory.sample(self.config["batch_size"])
+            ob0, action, reward, ob1, done, steps = self.memory.sample(self.config["batch_size"])
 
             # mirror observation
             if self.config["mirror_ob"] and ob0 is not None:
                 ob0, action, reward, ob1, done = \
-                    self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, self.config["toe_dist_threshold"])
+                    self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, steps)
 
             # reward shaping
             reward = self.ob_processor.reward_shaping(ob0, ob1, reward,
@@ -349,7 +352,7 @@ class DDPG(Agent):
 
             # store experience
             assert np.all((action >= self.act_low) & (action <= self.act_high))
-            self.memory.store(observation, action, reward, done)
+            self.memory.store(observation, action, reward, done, episode_steps)
 
             # train
             if train_step_counter % self.config["train_every"] == 0:

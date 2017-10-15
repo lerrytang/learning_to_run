@@ -16,10 +16,11 @@ class ReplayBuffer:
         self._action_mem = np.zeros((capacity,) + act_dim)
         self._reward_mem = np.zeros(capacity)
         self._done_mem = np.ones(capacity, dtype=bool)
+        self._step_mem = np.zeros(capacity)
         self.size = 0
         self._insert_index = 0
     
-    def store(self, observation, action, reward, done):
+    def store(self, observation, action, reward, done, step):
         """
         Upon receiving [observation], perform [action], then receive [reward] and [done]
         """
@@ -27,6 +28,7 @@ class ReplayBuffer:
         self._action_mem[self._insert_index] = action
         self._reward_mem[self._insert_index] = reward
         self._done_mem[self._insert_index] = done
+        self._step_mem[self._insert_index] = step
         self.size += 1
         self.size = min(self.size, self._capacity)
         self._insert_index += 1
@@ -41,10 +43,11 @@ class ReplayBuffer:
             acts = self._action_mem[rand_ix]
             rewards = self._reward_mem[rand_ix]
             dones = self._done_mem[rand_ix]
+            steps = self._step_mem[rand_ix]
             ix = rand_ix + 1
             ix = ix % self.size
             obs1 = self._observation_mem[ix]
-            return obs0, acts, rewards, obs1, dones
+            return obs0, acts, rewards, obs1, dones, steps
 
     def save_memory(self, path):
         np.savez(path,
@@ -53,6 +56,7 @@ class ReplayBuffer:
                 action_mem=self._action_mem,
                 reward_mem=self._reward_mem,
                 done_mem=self._done_mem,
+                step_mem=self._step_mem,
                 size=self.size,
                 insert_index=self._insert_index)
 
@@ -65,4 +69,6 @@ class ReplayBuffer:
             self._done_mem = npzfile["done_mem"]
             self.size = int(npzfile["size"])
             self._insert_index = int(npzfile["insert_index"])
+            if "step_mem" in npzfile:
+                self._step_mem = npzfile["step_mem"]
         
