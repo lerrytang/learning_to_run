@@ -47,7 +47,7 @@ def create_ob_processor(env, config):
     elif config["ob_processor"] == "norm1storder":
         obp = NormalizedFirstOrder()
     elif config["ob_processor"] == "2ndround":
-        obp = SecondRound()
+        obp = SecondRound(max_num_ob=config["max_obstacles"])
     else:
         obp = BodySpeedAugmentor()
     return obp
@@ -63,6 +63,8 @@ class DDPG(Agent):
         self.config = config
         if "use_ln" not in self.config:
             self.config["use_ln"] = False
+        if "max_obstacles" not in self.config:
+            self.config["max_obstacles"] = 3
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \
@@ -139,7 +141,7 @@ class DDPG(Agent):
                                        name="critic_bn{}".format(i + 1))(x)
 
             if self.config["use_ln"]:
-                x = LayerNorm(name="critic_ln{}".format(i + 1))(x)
+                x = LayerNorm(trainable=trainable, name="critic_ln{}".format(i + 1))(x)
 
             if lrelu > 0:
                 x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
@@ -178,7 +180,7 @@ class DDPG(Agent):
                                        name="actor_bn{}".format(i + 1))(x)
 
             if self.config["use_ln"]:
-                x = LayerNorm(name="actor_ln{}".format(i + 1))(x)
+                x = LayerNorm(trainable=trainable, name="actor_ln{}".format(i + 1))(x)
 
             if lrelu > 0:
                 x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)

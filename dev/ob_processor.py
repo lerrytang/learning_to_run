@@ -377,8 +377,10 @@ class SecondRound(ObservationProcessor):
                                     "vel_y_talus_l",
                                     "vel_x_talus_r",
                                     "vel_y_talus_r"]
+        logger.info("max_num_ob={}".format(self.max_num_ob))
         logger.info("X_VEL_INDICES={}".format([self.ob_names[i] for i in X_VEL_INDICES]))
         logger.info("Y_VEL_INDICES={}".format([self.ob_names[i] for i in Y_VEL_INDICES]))
+        logger.info("X_VEL_RS={}".format([self.ob_names[i] for i in X_VEL_INDICES[:4]]))
 
     def _print_ob(self, ob):
         assert len(self.ob_names) == ob.size
@@ -450,7 +452,7 @@ class SecondRound(ObservationProcessor):
         assert np.intersect1d(l_part, r_part).size == 0
 
         # get indices of experiences that are qualified to mirror
-        mask = (steps >= 20)   # do not mirror the first 20 steps, to break symmetry
+        mask = (steps > 20)   # do not mirror the first 20 steps, to break symmetry
 
         if np.sum(mask) > 0:
             # augment ob0
@@ -484,7 +486,7 @@ class SecondRound(ObservationProcessor):
         return ob0, action, reward, ob1, done
 
     def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
-        xvel = ob1[:, X_VEL_INDICES] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
+        xvel = ob1[:, X_VEL_INDICES[:4]] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
         avg_body_vel = xvel.mean(axis=1)
         reward_cp = deepcopy(reward)
         reward_cp += alpha * avg_body_vel

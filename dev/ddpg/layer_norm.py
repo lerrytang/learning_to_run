@@ -8,6 +8,7 @@ class LayerNorm(Layer):
 
     def __init__(self, scale_initializer='ones', bias_initializer='zeros', **kwargs):
         super(LayerNorm, self).__init__(**kwargs)
+        self.trainable = kwargs["trainable"]
         self.epsilon = 1e-8
         self.scale_initializer = initializers.get(scale_initializer)
         self.bias_initializer = initializers.get(bias_initializer)
@@ -15,13 +16,13 @@ class LayerNorm(Layer):
     def build(self, input_shape):
         self.scale = self.add_weight(shape=(input_shape[-1],),
                                      initializer=self.scale_initializer,
-                                     trainable=True,
+                                     trainable=self.trainable,
                                      name='{}_scale'.format(self.name))
         self.bias = self.add_weight(shape=(input_shape[-1],),
                                     initializer=self.bias_initializer,
-                                    trainable=True,
+                                    trainable=self.trainable,
                                     name='{}_bias'.format(self.name))
-        self.built = True
+        super(LayerNorm, self).build(input_shape)
 
     def call(self, x, mask=None):
         mean = K.mean(x, axis=-1, keepdims=True)
