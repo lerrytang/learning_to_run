@@ -149,7 +149,7 @@ def test(t_agent, trial_dir, visual_flag, token):
 
     # test
     util.print_sec_header(logger, "Testing")
-    rewards = agent.test()
+    rewards = agent.test(logging=env.remote_env)
     logger.info("avg_reward={}".format(np.mean(rewards)))
     env.close()
 

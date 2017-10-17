@@ -417,7 +417,7 @@ class DDPG(Agent):
 
         return reward_hist, steps_hist
 
-    def test(self):
+    def test(self, logging=False):
         all_rewards = []
         episode_count = 0
         episode_reward = 0
@@ -437,6 +437,10 @@ class DDPG(Agent):
             new_ob, reward, done, info = self.env.step(act_to_apply)
             episode_reward += reward
             episode_steps += 1
+
+            if logging:
+                self.logger.info("episode_steps={}, episode_reward={}".format(episode_steps, episode_reward))
+
             done |= (episode_steps >= self.config["max_steps"])
             if done:
                 episode_count += 1

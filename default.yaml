@@ -32,6 +32,8 @@ DDPG:
     reward_scale: 10.0
     use_ln: True
     max_obstacles: 10
+    fake_ob_pos: 3.0
+    clear_vel: True
 TRPO:
     batch_size: 5000
     n_envs: 16
