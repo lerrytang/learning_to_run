@@ -47,9 +47,12 @@ def create_ob_processor(env, config):
     elif config["ob_processor"] == "norm1storder":
         obp = NormalizedFirstOrder()
     elif config["ob_processor"] == "2ndround":
-        obp = SecondRound(max_num_ob=config["max_obstacles"])
+        obp = SecondRound(max_num_ob=config["max_obstacles"],
+                          fake_ob_pos=config["fake_ob_pos"],
+                          clear_vel=config["clear_vel"])
     else:
-        obp = BodySpeedAugmentor()
+        obp = BodySpeedAugmentor(max_num_ob=config["max_obstacles"],
+                          fake_ob_pos=config["fake_ob_pos"])
     return obp
 
 
@@ -61,10 +64,16 @@ class DDPG(Agent):
     def __init__(self, env, config):
         self.env = env
         self.config = config
+
+        # backward compatiblity
         if "use_ln" not in self.config:
             self.config["use_ln"] = False
         if "max_obstacles" not in self.config:
             self.config["max_obstacles"] = 3
+        if "fake_ob_pos" not in self.config:
+            self.config["fake_ob_pos"] = 0.0
+        if "clear_vel" not in self.config:
+            self.config["clear_vel"] = False
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \

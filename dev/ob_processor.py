@@ -359,8 +359,11 @@ class SecondRound(ObservationProcessor):
     Observation processor for the 2nd round of the NIP challenge
     """
 
-    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE):
+    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE, fake_ob_pos=0.0, clear_vel=False):
         self.max_num_ob = max_num_ob
+        self.fake_ob_pos = fake_ob_pos
+        self.clear_vel = clear_vel
+
         self.last_observation = None
         self.obstacle_pos = set()
         self.ob_names = OB_NAMES + ["vel_x_head",
@@ -398,7 +401,9 @@ class SecondRound(ObservationProcessor):
             ob_x = res[OBSTACLE_X_IX] + ob[PELVIS_X_IX]
             self.obstacle_pos.add(ob_x)
         else:
-            res[OBSTACLE_IX] = np.zeros_like(OBSTACLE_IX)
+            tmp = np.zeros_like(OBSTACLE_IX)
+            tmp[0] = self.fake_ob_pos
+            res[OBSTACLE_IX] = tmp
 
         # calculate velocity for body, pelvis, talus and toes
         cur_observation = np.asarray(ob)[BODY_PARTS_IX]
@@ -422,6 +427,10 @@ class SecondRound(ObservationProcessor):
         res[X_VEL_INDICES] -= res[PELVIS_X_VEL_IX]
         # make y-vel relative
         res[Y_VEL_INDICES] -= res[PELVIS_Y_VEL_IX]
+
+        if self.clear_vel:
+            res[PELVIS_X_VEL_IX] = 0.0
+            res[PELVIS_Y_VEL_IX] = 0.0
 
         # logger.info("----- After normalization ------")
         # self._print_ob(res)
@@ -497,7 +506,10 @@ class SecondRound(ObservationProcessor):
 
 class BodySpeedAugmentor(ObservationProcessor):
 
-    def __init__(self):
+    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE, fake_ob_pos=0.0):
+        self.max_num_ob = max_num_ob
+        self.fake_ob_pos = fake_ob_pos
+
         self.last_observation = None
         self.num_body_parts = 14
         self.body_parts_ix = np.arange(22, 36)
@@ -507,12 +519,12 @@ class BodySpeedAugmentor(ObservationProcessor):
     def process(self, ob):
 
         # deal with obstacles
-        if len(self.obstacle_pos) < MAX_NUM_OBSTACLE:
+        if len(self.obstacle_pos) < self.max_num_ob:
             pelvis_x = ob[PELVIS_X_IX]
             ob_x = ob[-3] + pelvis_x
             self.obstacle_pos.add(ob_x)
         else:
-            ob[-3:] = [0]*3
+            ob[-3:] = [self.fake_ob_pos] + [0]*2
 
         # generate velocity for body parts
         cur_observation = np.asarray(ob)[self.body_parts_ix]
