@@ -404,14 +404,16 @@ class SecondRound(ObservationProcessor):
         res = np.asarray(ob)
 
         # deal with obstacles
+        ob_x = round(res[OBSTACLE_X_IX] + res[PELVIS_X_IX], 6)
         if len(self.obstacle_pos) < self.max_num_ob:
-            # ob_x = res[OBSTACLE_X_IX] + ob[PELVIS_X_IX]
-            ob_x = round(res[OBSTACLE_X_IX] + res[PELVIS_X_IX], 6)
             self.obstacle_pos.add(ob_x)
         else:
-            tmp = np.zeros_like(OBSTACLE_IX)
-            tmp[0] = self.fake_ob_pos
-            res[OBSTACLE_IX] = tmp
+            if ob_x not in self.obstacle_pos:
+                tmp = np.zeros_like(OBSTACLE_IX)
+                tmp[0] = self.fake_ob_pos
+                res[OBSTACLE_IX] = tmp
+
+        # logger.info("self.obstacle_pos={}, res[OBSTACLE_IX]={}".format(self.obstacle_pos, res[OBSTACLE_IX]))
 
         # calculate velocity for body, pelvis, talus and toes
         cur_observation = np.asarray(ob)[BODY_PARTS_IX]
