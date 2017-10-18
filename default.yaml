@@ -27,7 +27,7 @@ DDPG:
     mirror_ob: True
     rs_weight: 0.0005
     include_limb_vel: True
-    lrelu: -1
+    lrelu: 0.3
     toe_dist_threshold: 0.1
     reward_scale: 10.0
     use_ln: False

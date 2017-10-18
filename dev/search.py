@@ -12,9 +12,11 @@ if __name__ == "__main__":
     print "pid={}".format(pid)
 
     # parameters space to search
-    lrelus = [-1, 0.1, 0.3, 0.5]
     actor_l2_actions = [1e-6, 1e-5, 1e-4, 1e-3]
-    use_lns = [True, False]
+    clear_vels = [True, False]
+    include_limb_vels = [True, False]
+    net_archs = [[128, 128, 64, 64],
+                 [512, 256, 128]]
 
     config = load_config("default.yaml")["DDPG"]
     config["agent"] = "DDPG"
@@ -25,13 +27,16 @@ if __name__ == "__main__":
 
     # grid search
     for actor_l2_action in actor_l2_actions:
-        for lrelu in lrelus:
-            for use_ln in use_lns:
-                p_config = deepcopy(config)
-                p_config["actor_l2_action"] = actor_l2_action
-                p_config["lrelu"] = lrelu
-                p_config["use_ln"] = use_ln
-                worker_pool.apply_async(func=train, args=(p_config,))
+        for clear_vel in clear_vels:
+            for include_limb_vel in include_limb_vels:
+                for net_arch in net_archs:
+                    p_config = deepcopy(config)
+                    p_config["actor_l2_action"] = actor_l2_action
+                    p_config["clear_vel"] = clear_vel
+                    p_config["include_limb_vel"] = include_limb_vel
+                    p_config["actor_hiddens"] = net_arch
+                    p_config["critic_hiddens"] = net_arch
+                    worker_pool.apply_async(func=train, args=(p_config,))
 
     # clean up
     worker_pool.close()
