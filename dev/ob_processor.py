@@ -405,7 +405,8 @@ class SecondRound(ObservationProcessor):
 
         # deal with obstacles
         if len(self.obstacle_pos) < self.max_num_ob:
-            ob_x = res[OBSTACLE_X_IX] + ob[PELVIS_X_IX]
+            # ob_x = res[OBSTACLE_X_IX] + ob[PELVIS_X_IX]
+            ob_x = round(res[OBSTACLE_X_IX] + res[PELVIS_X_IX], 6)
             self.obstacle_pos.add(ob_x)
         else:
             tmp = np.zeros_like(OBSTACLE_IX)
