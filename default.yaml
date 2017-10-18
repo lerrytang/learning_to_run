@@ -26,14 +26,14 @@ DDPG:
     ob_processor: "2ndround"
     mirror_ob: True
     rs_weight: 0.0005
-    rs_delta_vel: False
+    include_limb_vel: True
     lrelu: -1
     toe_dist_threshold: 0.1
     reward_scale: 10.0
-    use_ln: True
+    use_ln: False
     max_obstacles: 10
     fake_ob_pos: 3.0
-    clear_vel: True
+    clear_vel: False
 TRPO:
     batch_size: 5000
     n_envs: 16

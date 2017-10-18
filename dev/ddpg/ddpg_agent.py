@@ -49,7 +49,8 @@ def create_ob_processor(env, config):
     elif config["ob_processor"] == "2ndround":
         obp = SecondRound(max_num_ob=config["max_obstacles"],
                           fake_ob_pos=config["fake_ob_pos"],
-                          clear_vel=config["clear_vel"])
+                          clear_vel=config["clear_vel"],
+                          include_limb_vel=config["include_limb_vel"])
     else:
         obp = BodySpeedAugmentor(max_num_ob=config["max_obstacles"],
                           fake_ob_pos=config["fake_ob_pos"])
@@ -72,6 +73,8 @@ class DDPG(Agent):
             self.config["fake_ob_pos"] = 0.0
         if "clear_vel" not in self.config:
             self.config["clear_vel"] = False
+        if "include_limb_vel" not in self.config:
+            self.config["include_limb_vel"] = True
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \
@@ -288,9 +291,7 @@ class DDPG(Agent):
                     self.ob_processor.mirror_ob(ob0, action, reward, ob1, done, steps)
 
             # reward shaping
-            reward = self.ob_processor.reward_shaping(ob0, ob1, reward,
-                                                      self.config["rs_weight"],
-                                                      self.config["rs_delta_vel"])
+            reward = self.ob_processor.reward_shaping(ob0, ob1, reward, self.config["rs_weight"])
 
             # reward scale
             if ob0 is not None:

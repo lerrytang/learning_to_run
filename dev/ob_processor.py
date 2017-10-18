@@ -171,10 +171,10 @@ class ObservationProcessor(object):
     def reset(self):
         pass
 
-    def mirror_ob(self, ob0, action, reward, ob1, done, threshold):
+    def mirror_ob(self, ob0, action, reward, ob1, done, steps):
         return None
 
-    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+    def reward_shaping(self, ob0, ob1, reward, alpha):
         return reward
 
 
@@ -359,10 +359,11 @@ class SecondRound(ObservationProcessor):
     Observation processor for the 2nd round of the NIP challenge
     """
 
-    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE, fake_ob_pos=0.0, clear_vel=False):
+    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE, fake_ob_pos=0.0, clear_vel=False, include_limb_vel=True):
         self.max_num_ob = max_num_ob
         self.fake_ob_pos = fake_ob_pos
         self.clear_vel = clear_vel
+        self.include_limb_vel = include_limb_vel
 
         self.last_observation = None
         self.obstacle_pos = set()
@@ -380,10 +381,16 @@ class SecondRound(ObservationProcessor):
                                     "vel_y_talus_l",
                                     "vel_x_talus_r",
                                     "vel_y_talus_r"]
+
         logger.info("max_num_ob={}".format(self.max_num_ob))
+        logger.info("fake_ob_pos={}".format(self.fake_ob_pos))
+        logger.info("clear_vel={}".format(self.clear_vel))
         logger.info("X_VEL_INDICES={}".format([self.ob_names[i] for i in X_VEL_INDICES]))
         logger.info("Y_VEL_INDICES={}".format([self.ob_names[i] for i in Y_VEL_INDICES]))
-        logger.info("X_VEL_RS={}".format([self.ob_names[i] for i in X_VEL_INDICES[:4]]))
+        if self.include_limb_vel:
+            logger.info("X_VEL_RS={}".format([self.ob_names[i] for i in X_VEL_INDICES]))
+        else:
+            logger.info("X_VEL_RS={}".format([self.ob_names[i] for i in X_VEL_INDICES[:4]]))
 
     def _print_ob(self, ob):
         assert len(self.ob_names) == ob.size
@@ -494,8 +501,11 @@ class SecondRound(ObservationProcessor):
 
         return ob0, action, reward, ob1, done
 
-    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
-        xvel = ob1[:, X_VEL_INDICES[:4]] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
+    def reward_shaping(self, ob0, ob1, reward, alpha):
+        if self.include_limb_vel:
+            xvel = ob1[:, X_VEL_INDICES] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
+        else:
+            xvel = ob1[:, X_VEL_INDICES[:4]] + np.expand_dims(ob1[:, PELVIS_X_VEL_IX], axis=-1)
         avg_body_vel = xvel.mean(axis=1)
         reward_cp = deepcopy(reward)
         reward_cp += alpha * avg_body_vel
@@ -610,7 +620,7 @@ class BodySpeedAugmentor(ObservationProcessor):
 
         return ob0, action, reward, ob1, done
 
-    def reward_shaping(self, ob0, ob1, reward, alpha, delta_vel=False):
+    def reward_shaping(self, ob0, ob1, reward, alpha):
         tar_xvel_ix = np.asarray([4, 20, 41, 43, 45])
         avg_body_vel = ob1[:, tar_xvel_ix].mean(axis=1)
         reward_cp = deepcopy(reward)
