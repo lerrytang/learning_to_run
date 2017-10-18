@@ -68,8 +68,6 @@ class DDPG(Agent):
         # backward compatiblity
         if "use_ln" not in self.config:
             self.config["use_ln"] = False
-        if "max_obstacles" not in self.config:
-            self.config["max_obstacles"] = 3
         if "fake_ob_pos" not in self.config:
             self.config["fake_ob_pos"] = 0.0
         if "clear_vel" not in self.config:

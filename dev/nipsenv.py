@@ -1,6 +1,8 @@
 from osim.env import RunEnv
 from osim.http.client import Client
-
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 GRADER_URL = 'http://grader.crowdai.org:1729'
 
@@ -8,9 +10,10 @@ GRADER_URL = 'http://grader.crowdai.org:1729'
 class NIPS(object):
 
     def __init__(self, visualize=False, token=None, max_obstacles=3):
+        logger.info("max_obstacles={}".format(max_obstacles))
         if token is None:
             self.remote_env = False
-            self.env = RunEnv(visualize=visualize)
+            self.env = RunEnv(visualize=visualize, max_obstacles=max_obstacles)
         else:
             self.remote_env = True
             self.local_env = RunEnv(visualize=False, max_obstacles=max_obstacles)

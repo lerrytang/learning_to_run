@@ -64,7 +64,9 @@ def train(config, trial_dir=None, visualize=False, overwrite_config=False):
     logger, log_dir = prepare_for_logging(trial_name)
 
     # create agent
-    env = NIPS(visualize)
+    if "max_obstacles" not in config:
+        config["max_obstacles"] = 3
+    env = NIPS(visualize, max_obstacles=config["max_obstacles"])
     logger.info("pid={}, env={}".format(pid, id(env)))
 
     # to train from scratch or fine tune
@@ -121,8 +123,6 @@ def train(config, trial_dir=None, visualize=False, overwrite_config=False):
 def test(t_agent, trial_dir, visual_flag, token):
     assert trial_dir is not None and os.path.exists(trial_dir)
 
-    env = NIPS(visual_flag, token)
-
     # prepare trial environment
     pid = os.getpid()
     logger, _ = prepare_for_logging(str(pid), create_folder=False)
@@ -132,6 +132,10 @@ def test(t_agent, trial_dir, visual_flag, token):
     if not os.path.exists(config_file):
         convert_legacy_config(trial_dir, t_agent)
     config = util.load_config(config_file)
+
+    if "max_obstacles" not in config:
+        config["max_obstacles"] = 3
+    env = NIPS(visualize=visual_flag, max_obstacles=config["max_obstacles"], token=token)
     util.print_settings(logger, config, env)
 
     # instantiate an agent
