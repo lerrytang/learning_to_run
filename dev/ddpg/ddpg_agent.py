@@ -458,7 +458,8 @@ class DDPG(Agent):
         return all_rewards
 
     def set_state(self, config):
-        self.load_models()
+        mem_loaded = self.load_memory()
+        self.load_models(overwrite_target=~mem_loaded)
 
     def save_models(self):
         paths = {"actor": "actor.h5",
@@ -469,7 +470,7 @@ class DDPG(Agent):
         self.critic.save_weights(paths["critic"])
         self.target.save_weights(paths["target"])
 
-    def load_models(self):
+    def load_models(self, overwrite_target=False):
         if self.model_dir is None:
             return
         paths = {"actor": "actor.h5",
@@ -479,6 +480,11 @@ class DDPG(Agent):
         self.actor.load_weights(paths["actor"])
         self.critic.load_weights(paths["critic"])
         self.target.load_weights(paths["target"])
+        if overwrite_target:
+            # hard copy weights
+            self._copy_critic_weights(self.critic, self.actor)
+            self._copy_critic_weights(self.critic, self.target)
+            self._copy_actor_weights(self.actor, self.target)
 
     def save_memory(self):
         path = os.path.join(self.log_dir, "memory.npz")
@@ -486,4 +492,9 @@ class DDPG(Agent):
 
     def load_memory(self):
         path = os.path.join(self.model_dir, "memory.npz")
-        self.memory.load_memory(path)
+        loaded = False
+        if os.path.exists(path):
+            self.memory.load_memory(path)
+            self.logger.info("Loaded replay buffer from {}".format(path))
+            loaded = True
+        return loaded
