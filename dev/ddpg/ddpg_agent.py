@@ -135,7 +135,13 @@ class DDPG(Agent):
         assert self.config["merge_at_layer"] <= len(critic_hiddens)
 
         # critic input part
-        x = ob_input
+        if self.config["use_bn"]:
+            x = BatchNormalization(center=False,
+                                   scale=False,
+                                   trainable=trainable,
+                                   name="critic_bn_ob")(ob_input)
+        else:
+            x = ob_input
         if self.config["merge_at_layer"] == 0:
             x = Concatenate(name="combined_input")([x, act_input])
 
@@ -149,9 +155,9 @@ class DDPG(Agent):
                       kernel_regularizer=l2(self.config["critic_l2"]),
                       name="critic_fc{}".format(i + 1))(x)
 
-            if self.config["use_bn"]:
-                x = BatchNormalization(trainable=trainable,
-                                       name="critic_bn{}".format(i + 1))(x)
+            # if self.config["use_bn"]:
+            #     x = BatchNormalization(trainable=trainable,
+            #                            name="critic_bn{}".format(i + 1))(x)
 
             if self.config["use_ln"]:
                 x = LayerNorm(trainable=trainable, name="critic_ln{}".format(i + 1))(x)
@@ -176,7 +182,13 @@ class DDPG(Agent):
     def create_actor(self, actor_hiddens, critic_hiddens, lrelu, trainable=True):
         # actor input part
         ob_input = Input(shape=self.ob_dim, name="ob_input")
-        x = ob_input
+        if self.config["use_bn"]:
+            x = BatchNormalization(center=False,
+                                   scale=False,
+                                   trainable=trainable,
+                                   name="actor_bn_ob")(ob_input)
+        else:
+            x = ob_input
 
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
@@ -188,9 +200,9 @@ class DDPG(Agent):
                       kernel_regularizer=l2(self.config["actor_l2"]),
                       name="actor_fc{}".format(i + 1))(x)
 
-            if self.config["use_bn"]:
-                x = BatchNormalization(trainable=trainable,
-                                       name="actor_bn{}".format(i + 1))(x)
+            # if self.config["use_bn"]:
+            #     x = BatchNormalization(trainable=trainable,
+            #                            name="actor_bn{}".format(i + 1))(x)
 
             if self.config["use_ln"]:
                 x = LayerNorm(trainable=trainable, name="actor_ln{}".format(i + 1))(x)
@@ -252,6 +264,7 @@ class DDPG(Agent):
         for l in actor_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
+            tau = 1.0 if "bn_ob" in l else tau
             self._copy_layer_weights(src_layer, tar_layer, tau)
 
     def _copy_critic_weights(self, src_model, tar_model, tau=1.0):
@@ -260,6 +273,7 @@ class DDPG(Agent):
         for l in critic_layers:
             src_layer = src_model.get_layer(l)
             tar_layer = tar_model.get_layer(l)
+            tau = 1.0 if "bn_ob" in l else tau
             self._copy_layer_weights(src_layer, tar_layer, tau)
 
     # ==================================================== #
