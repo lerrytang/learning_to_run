@@ -48,6 +48,7 @@ def create_ob_processor(env, config):
         obp = NormalizedFirstOrder()
     elif config["ob_processor"] == "2ndround":
         obp = SecondRound(max_num_ob=config["max_obstacles"],
+                          ob_dist_scale=config["ob_dist_scale"],
                           fake_ob_pos=config["fake_ob_pos"],
                           clear_vel=config["clear_vel"],
                           include_limb_vel=config["include_limb_vel"])
@@ -75,6 +76,8 @@ class DDPG(Agent):
             self.config["clear_vel"] = False
         if "include_limb_vel" not in self.config:
             self.config["include_limb_vel"] = True
+        if "ob_dist_scale" not in self.config:
+            self.config["ob_dist_scale"] = 1.0
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \
@@ -459,7 +462,7 @@ class DDPG(Agent):
 
     def set_state(self, config):
         mem_loaded = self.load_memory()
-        self.load_models(overwrite_target=~mem_loaded)
+        self.load_models(overwrite_target=(not mem_loaded))
 
     def save_models(self):
         paths = {"actor": "actor.h5",
@@ -481,6 +484,7 @@ class DDPG(Agent):
         self.critic.load_weights(paths["critic"])
         self.target.load_weights(paths["target"])
         if overwrite_target:
+            self.logger.info("Overwrite target network")
             # hard copy weights
             self._copy_critic_weights(self.critic, self.actor)
             self._copy_critic_weights(self.critic, self.target)

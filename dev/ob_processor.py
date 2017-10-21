@@ -359,8 +359,14 @@ class SecondRound(ObservationProcessor):
     Observation processor for the 2nd round of the NIP challenge
     """
 
-    def __init__(self, max_num_ob=MAX_NUM_OBSTACLE, fake_ob_pos=0.0, clear_vel=False, include_limb_vel=True):
+    def __init__(self,
+                 max_num_ob=MAX_NUM_OBSTACLE,
+                 ob_dist_scale=1.0,
+                 fake_ob_pos=0.0,
+                 clear_vel=False,
+                 include_limb_vel=True):
         self.max_num_ob = max_num_ob
+        self.ob_dist_scale = ob_dist_scale
         self.fake_ob_pos = fake_ob_pos
         self.clear_vel = clear_vel
         self.include_limb_vel = include_limb_vel
@@ -383,6 +389,7 @@ class SecondRound(ObservationProcessor):
                                     "vel_y_talus_r"]
 
         logger.info("max_num_ob={}".format(self.max_num_ob))
+        logger.info("ob_dist_scale={}".format(self.ob_dist_scale))
         logger.info("fake_ob_pos={}".format(self.fake_ob_pos))
         logger.info("clear_vel={}".format(self.clear_vel))
         logger.info("X_VEL_INDICES={}".format([self.ob_names[i] for i in X_VEL_INDICES]))
@@ -412,7 +419,7 @@ class SecondRound(ObservationProcessor):
                 tmp = np.zeros_like(OBSTACLE_IX)
                 tmp[0] = self.fake_ob_pos
                 res[OBSTACLE_IX] = tmp
-
+        res[OBSTACLE_X_IX] *= self.ob_dist_scale
         # logger.info("self.obstacle_pos={}, res[OBSTACLE_IX]={}".format(self.obstacle_pos, res[OBSTACLE_IX]))
 
         # calculate velocity for body, pelvis, talus and toes

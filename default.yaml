@@ -32,6 +32,7 @@ DDPG:
     reward_scale: 10.0
     use_ln: False
     max_obstacles: 10
+    ob_dist_scale: 0.1
     fake_ob_pos: 3.0
     clear_vel: False
 TRPO:
