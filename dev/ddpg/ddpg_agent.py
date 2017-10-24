@@ -26,6 +26,12 @@ def action_sqr(y_true, y_pred):
     return K.mean(K.sum(K.square(y_pred), axis=-1))
 
 
+def swish(x, name):
+    y = Activation("sigmoid", name=name+"_sigmoid")(x)
+    y = Lambda(lambda t: t*y, name=name)(x)
+    return y
+
+
 def create_rand_process(env, config):
     if "jump" in config and config["jump"]:
         act_dim = env.action_space.shape[0] / 2
@@ -78,6 +84,8 @@ class DDPG(Agent):
             self.config["include_limb_vel"] = True
         if "ob_dist_scale" not in self.config:
             self.config["ob_dist_scale"] = 1.0
+        if "use_swish" not in self.config:
+            self.config["use_swish"] = False
 
         self.ob_processor = create_ob_processor(env, config)
         self.ob_dim = \
@@ -162,10 +170,13 @@ class DDPG(Agent):
             if self.config["use_ln"]:
                 x = LayerNorm(trainable=trainable, name="critic_ln{}".format(i + 1))(x)
 
-            if lrelu > 0:
-                x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
+            if self.config["use_swish"]:
+                x = swish(x, name="critic_swish{}".format(i + 1))
             else:
-                x = Activation("relu", name = "critic_relu{}".format(i + 1))(x)
+                if lrelu > 0:
+                    x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
+                else:
+                    x = Activation("relu", name = "critic_relu{}".format(i + 1))(x)
 
             if self.config["merge_at_layer"] == i + 1:
                 x = Concatenate(name="combined_input")([x, act_input])
@@ -207,10 +218,13 @@ class DDPG(Agent):
             if self.config["use_ln"]:
                 x = LayerNorm(trainable=trainable, name="actor_ln{}".format(i + 1))(x)
 
-            if lrelu > 0:
-                x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)
+            if self.config["use_swish"]:
+                x = swish(x, name="actor_swish{}".format(i + 1))
             else:
-                x = Activation("relu", name = "actor_relu{}".format(i + 1))(x)
+                if lrelu > 0:
+                    x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)
+                else:
+                    x = Activation("relu", name = "actor_relu{}".format(i + 1))(x)
 
         # action output
         x = Dense(self.act_dim[0],

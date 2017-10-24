@@ -35,6 +35,7 @@ DDPG:
     ob_dist_scale: 0.1
     fake_ob_pos: 3.0
     clear_vel: False
+    use_swish: True
 TRPO:
     batch_size: 5000
     n_envs: 16
