@@ -141,6 +141,7 @@ def test(t_agent, trial_dir, visual_flag, token):
     # instantiate an agent
     config["logger"] = logger
     config["log_dir"] = trial_dir
+    config["model_dir"] = trial_dir
     if t_agent == "DDPG":
         from ddpg import DDPG
         agent = DDPG(env, config)
