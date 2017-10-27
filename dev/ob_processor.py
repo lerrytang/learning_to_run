@@ -368,6 +368,7 @@ class SecondRound(ObservationProcessor):
         self.max_num_ob = max_num_ob
         self.ob_dist_scale = ob_dist_scale
         self.fake_ob_pos = fake_ob_pos
+        self.cur_fake_ob_pos = fake_ob_pos
         self.clear_vel = clear_vel
         self.include_limb_vel = include_limb_vel
 
@@ -411,16 +412,16 @@ class SecondRound(ObservationProcessor):
         res = np.asarray(ob)
 
         # deal with obstacles
+        fake_ob_in_use = False
         ob_x = round(res[OBSTACLE_X_IX] + res[PELVIS_X_IX], 6)
         if len(self.obstacle_pos) < self.max_num_ob:
             self.obstacle_pos.add(ob_x)
         else:
             if ob_x not in self.obstacle_pos:
-                tmp = np.zeros_like(OBSTACLE_IX)
-                tmp[0] = self.fake_ob_pos
-                res[OBSTACLE_IX] = tmp
-        res[OBSTACLE_X_IX] *= self.ob_dist_scale
-        # logger.info("self.obstacle_pos={}, res[OBSTACLE_IX]={}".format(self.obstacle_pos, res[OBSTACLE_IX]))
+                # tmp = np.zeros_like(OBSTACLE_IX)
+                # tmp[0] = self.fake_ob_pos
+                # res[OBSTACLE_IX] = tmp
+                fake_ob_in_use = True
 
         # calculate velocity for body, pelvis, talus and toes
         cur_observation = np.asarray(ob)[BODY_PARTS_IX]
@@ -430,6 +431,17 @@ class SecondRound(ObservationProcessor):
             ob_augmentation = (cur_observation - self.last_observation) * 100.0
             res = np.concatenate([ob, ob_augmentation], axis=0)
         self.last_observation = cur_observation
+
+        # process fake dist
+        if fake_ob_in_use:
+            res[OBSTACLE_IX] = 0
+            self.cur_fake_ob_pos -= ob_augmentation[2] * 0.01
+            if self.cur_fake_ob_pos < -0.1:
+                self.cur_fake_ob_pos = self.fake_ob_pos
+            res[OBSTACLE_X_IX] = self.cur_fake_ob_pos
+
+        res[OBSTACLE_X_IX] *= self.ob_dist_scale
+        # logger.info("self.obstacle_pos={}, res[OBSTACLE_IX]={}".format(self.obstacle_pos, res[OBSTACLE_IX]))
 
         # logger.info("----- Before normalization -----")
         # self._print_ob(res)

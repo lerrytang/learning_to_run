@@ -508,6 +508,7 @@ class DDPG(Agent):
                  "critic": "critic.h5",
                  "target": "target.h5"}
         paths = {k: os.path.join(self.model_dir, v) for k, v in paths.iteritems()}
+        self.logger.info("Load models from {}".format(paths))
         self.actor.load_weights(paths["actor"])
         self.critic.load_weights(paths["critic"])
         self.target.load_weights(paths["target"])
