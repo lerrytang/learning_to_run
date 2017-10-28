@@ -33,7 +33,7 @@ class OUPfromWiki:
     Ornstein Uhlenbeck Process whose implementation follows wikipedia
     """
 
-    def __init__(self, action_dim, theta, sigma, init_val=0.0, scale_min=0, annealing_steps=0):
+    def __init__(self, action_dim, theta, sigma, init_val=0.0, scale_min=0, annealing_steps=0, seed=0):
         self.action_dim = action_dim
         self.theta = theta
         self.sigma = sigma
@@ -47,6 +47,8 @@ class OUPfromWiki:
 
         # initialize x0
         self.xt = np.ones(action_dim) * init_val
+
+        np.random.seed(seed)
 
     def sample(self):
         """

@@ -32,10 +32,11 @@ DDPG:
     reward_scale: 10.0
     use_ln: False
     max_obstacles: 10
-    ob_dist_scale: 0.1
+    ob_dist_scale: 1.0
     fake_ob_pos: 3.0
     clear_vel: False
-    use_swish: True
+    use_swish: False
+    num_samplers: 2
 TRPO:
     batch_size: 5000
     n_envs: 16

@@ -1,9 +1,8 @@
 from agent import Agent
-# from rand import OrnsteinUhlenbeckProcess as OUP
-from rand import OUPfromWiki as OUP
+from nipsenv import NIPS
+from env_sampler import EnvSampler
+from multiprocessing import Queue, Process
 from mem import ReplayBuffer as RB
-from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
-from ob_processor import NormalizedFirstOrder, SecondRound
 
 from keras.models import Model
 from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
@@ -16,6 +15,7 @@ from .layer_norm import LayerNorm
 
 import numpy as np
 import os
+import util
 
 
 def minus_Q(y_true, y_pred):
@@ -32,38 +32,6 @@ def swish(x, name):
     return y
 
 
-def create_rand_process(env, config):
-    if "jump" in config and config["jump"]:
-        act_dim = env.action_space.shape[0] / 2
-    else:
-        act_dim = env.action_space.shape[0]
-    return OUP(
-        action_dim=act_dim,
-        theta=config["theta"],
-        sigma=config["sigma_init"],
-        scale_min=config["sigma_min"],
-        annealing_steps=config["annealing_steps"])
-
-
-def create_ob_processor(env, config):
-    if "ob_processor" not in config or config["ob_processor"] == "dummy":
-        obp = ObservationProcessor()
-    elif config["ob_processor"] == "2ndorder":
-        obp = SecondOrderAugmentor()
-    elif config["ob_processor"] == "norm1storder":
-        obp = NormalizedFirstOrder()
-    elif config["ob_processor"] == "2ndround":
-        obp = SecondRound(max_num_ob=config["max_obstacles"],
-                          ob_dist_scale=config["ob_dist_scale"],
-                          fake_ob_pos=config["fake_ob_pos"],
-                          clear_vel=config["clear_vel"],
-                          include_limb_vel=config["include_limb_vel"])
-    else:
-        obp = BodySpeedAugmentor(max_num_ob=config["max_obstacles"],
-                          fake_ob_pos=config["fake_ob_pos"])
-    return obp
-
-
 class DDPG(Agent):
     """
     DDPG Agent
@@ -72,8 +40,9 @@ class DDPG(Agent):
     def __init__(self, env, config):
         self.env = env
         self.config = config
+        self.logger = config["logger"]
 
-        # backward compatiblity
+        # backward compatibility
         if "use_ln" not in self.config:
             self.config["use_ln"] = False
         if "fake_ob_pos" not in self.config:
@@ -86,11 +55,18 @@ class DDPG(Agent):
             self.config["ob_dist_scale"] = 1.0
         if "use_swish" not in self.config:
             self.config["use_swish"] = False
+        if "num_samplers" not in self.config:
+            self.config["num_samplers"] = 0
 
-        self.ob_processor = create_ob_processor(env, config)
+        if self.config["num_samplers"] > 0:
+            self.logger.info("<Multiprocess>")
+        else:
+            self.logger.info("<Single process>")
+
+        # observation processor
+        self.ob_processor = util.create_ob_processor(env, config)
         self.ob_dim = \
             (self.env.observation_space.shape[0] + self.ob_processor.get_aug_dim(),)
-
         if "jump" in config and config["jump"]:
             assert self.env.action_space.shape[0] % 2 == 0
             real_act_dim = self.env.action_space.shape[0] / 2
@@ -102,11 +78,14 @@ class DDPG(Agent):
         self.act_high = self.env.action_space.high[:real_act_dim]
         self.act_low = self.env.action_space.low[:real_act_dim]
 
+        # random process for exploration
+        self.rand_process = util.create_rand_process(env, config)
+
+        # replay buffer
         self.memory = RB(
             ob_dim=self.ob_dim,
             act_dim=self.act_dim,
             capacity=config["memory_capacity"])
-        self.rand_process = create_rand_process(env, config)
 
         # build actor, critic and target
         self.build_nets(
@@ -117,10 +96,8 @@ class DDPG(Agent):
         self.critic.summary()
         self.target.summary()
 
-        self.logger = config["logger"]
         self.log_dir = config["log_dir"]
         self.model_dir = config["model_dir"] if "model_dir" in config else self.log_dir
-
 
     # ==================================================== #
     #           Building Models                            #
@@ -354,7 +331,13 @@ class DDPG(Agent):
             hist = np.vstack([hist, data])
         return hist
 
-    def learn(self, total_episodes=10000):
+    def learn(self, total_episodes):
+        if self.config["num_samplers"] == 0:
+            return self.single_learn(total_episodes)
+        else:
+            return self.multi_learn(total_episodes)
+
+    def single_learn(self, total_episodes=10000):
         episode_n = 0
         episode_reward = 0
         episode_steps = 0
@@ -415,15 +398,16 @@ class DDPG(Agent):
                 self.logger.info(
                     "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
                     "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(episode_n,
-                                                                                episode_steps,
-                                                                                episode_reward,
-                                                                                np.mean(
-                                                                                    episode_losses),
-                                                                                np.mean(
-                                                                                    episode_qval),
-                                                                                np.min(abs_noise), np.max(abs_noise),
-                                                                                np.min(action_hist), np.max(action_hist)
-                                                                                ))
+                                                                                 episode_steps,
+                                                                                 episode_reward,
+                                                                                 np.mean(
+                                                                                     episode_losses),
+                                                                                 np.mean(
+                                                                                     episode_qval),
+                                                                                 np.min(abs_noise), np.max(abs_noise),
+                                                                                 np.min(action_hist),
+                                                                                 np.max(action_hist)
+                                                                                 ))
 
                 self.save_models()
 
@@ -446,6 +430,116 @@ class DDPG(Agent):
         self.save_memory()
 
         return reward_hist, steps_hist
+
+    def multi_learn(self, total_episodes):
+        import threading
+
+        net_lock = threading.Lock()
+        ob_sub_Q = Queue(maxsize=self.config["batch_size"])
+
+        # pass a dummy observation
+        self.actor.predict(np.zeros([1,55]))
+        self.target.predict(np.zeros([1, 55]))
+        self.critic.predict([np.zeros([1, 55]), np.zeros([1, 18])])
+
+        def simulate(act_req_Q, act_res_Q):
+            while True:
+                observation = act_req_Q.get()
+                net_lock.acquire()
+                action, qval = self.actor.predict(observation)
+                net_lock.release()
+                act_res_Q.put((action, qval))
+
+        def train():
+            reward_dict = {}
+            action_dict = {}
+            noise_dict = {}
+            qval_dict = {}
+
+            episode_n = 0
+            from collections import deque
+            losses = deque(maxlen=1000)
+            steps = 0
+            while episode_n < total_episodes:
+                msg = ob_sub_Q.get()
+                pid = msg["pid"]
+                observation = msg["observation"]
+                done = msg["done"]
+                episode_steps = msg["episode_steps"]
+                action = msg["action"]
+                if pid not in action_dict:
+                    action_dict[pid] = None
+                action_dict[pid] = self.append_hist(action_dict[pid], action)
+                noise = msg["noise"]
+                if pid not in noise_dict:
+                    noise_dict[pid] = None
+                noise_dict[pid] = self.append_hist(noise_dict[pid], noise)
+                qval = msg["qval"]
+                if pid not in qval_dict:
+                    qval_dict[pid] = None
+                qval_dict[pid] = self.append_hist(qval_dict[pid], qval)
+                reward = msg["reward"]
+                if pid not in reward_dict:
+                    reward_dict[pid] = reward
+                else:
+                    reward_dict[pid] += reward
+                self.memory.store(observation, action, reward, done, episode_steps)
+                # self.logger.info("pid={}, noise={}".format(pid, noise))
+
+                steps += 1
+                if steps % self.config["num_samplers"] == 0:
+                    net_lock.acquire()
+                    loss, _ = self.train_actor_critic()
+                    losses.append(loss)
+                    net_lock.release()
+
+                if done:
+                    episode_n += 1
+
+                    self.save_models()
+                    if episode_n % self.config["save_snapshot_every"] == 0:
+                        self.save_memory()
+                        self.logger.info("Snapshot saved.")
+
+                    abs_noise = np.abs(noise_dict[pid])
+                    self.logger.info(
+                        "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
+                        "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(episode_n,
+                                                                                     episode_steps,
+                                                                                     reward_dict[pid],
+                                                                                     np.mean(losses),
+                                                                                     np.mean(qval_dict[pid]),
+                                                                                     np.min(abs_noise),
+                                                                                     np.max(abs_noise),
+                                                                                     np.min(action_dict[pid]),
+                                                                                     np.max(action_dict[pid])
+                                                                                     ))
+                    action_dict[pid] = None
+                    reward_dict[pid] = 0
+                    qval_dict[pid] = None
+                    noise_dict[pid] = None
+
+        th = []
+        for i in xrange(self.config["num_samplers"]):
+            act_req_Q = Queue(maxsize=self.config["batch_size"])
+            act_res_Q = Queue(maxsize=self.config["batch_size"])
+            sampler = EnvSampler(env=NIPS(max_obstacles=self.env.max_obstacles),
+                                 config=self.config,
+                                 act_req_Q=act_req_Q,
+                                 act_res_Q=act_res_Q,
+                                 ob_sub_Q=ob_sub_Q)
+            sampler.start()
+            simulate_thread = threading.Thread(target=simulate, args=(act_req_Q, act_res_Q))
+            simulate_thread.start()
+            th.append(simulate_thread)
+            self.logger.info("Started one sampler thread")
+
+        train()
+        self.save_models()
+        self.save_memory()
+        for t in th:
+            t.join()
+        return None, None
 
     def test(self, logging=False):
         all_rewards = []

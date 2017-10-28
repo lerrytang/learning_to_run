@@ -142,6 +142,7 @@ def test(t_agent, trial_dir, visual_flag, token):
     config["logger"] = logger
     config["log_dir"] = trial_dir
     config["model_dir"] = trial_dir
+    config["num_samplers"] = 0
     if t_agent == "DDPG":
         from ddpg import DDPG
         agent = DDPG(env, config)

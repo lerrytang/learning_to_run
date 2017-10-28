@@ -12,6 +12,47 @@ import numpy as np
 import socket
 import pickle
 
+from ddpg.rand import OUPfromWiki as OUP
+from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
+from ob_processor import NormalizedFirstOrder, SecondRound
+import random
+
+
+# ============================================= #
+#             DDPG related                      #
+# ============================================= #
+
+def create_rand_process(env, config):
+    if "jump" in config and config["jump"]:
+        act_dim = env.action_space.shape[0] / 2
+    else:
+        act_dim = env.action_space.shape[0]
+    return OUP(
+        action_dim=act_dim,
+        theta=config["theta"],
+        sigma=config["sigma_init"],
+        scale_min=config["sigma_min"],
+        annealing_steps=config["annealing_steps"],
+        seed=random.randint(0, 10000))
+
+
+def create_ob_processor(env, config):
+    if "ob_processor" not in config or config["ob_processor"] == "dummy":
+        obp = ObservationProcessor()
+    elif config["ob_processor"] == "2ndorder":
+        obp = SecondOrderAugmentor()
+    elif config["ob_processor"] == "norm1storder":
+        obp = NormalizedFirstOrder()
+    elif config["ob_processor"] == "2ndround":
+        obp = SecondRound(max_num_ob=config["max_obstacles"],
+                          ob_dist_scale=config["ob_dist_scale"],
+                          fake_ob_pos=config["fake_ob_pos"],
+                          clear_vel=config["clear_vel"],
+                          include_limb_vel=config["include_limb_vel"])
+    else:
+        obp = BodySpeedAugmentor(max_num_ob=config["max_obstacles"],
+                          fake_ob_pos=config["fake_ob_pos"])
+    return obp
 
 # ============================================= #
 #             Pretty Printing                   #

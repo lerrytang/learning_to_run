@@ -11,6 +11,7 @@ class NIPS(object):
 
     def __init__(self, visualize=False, token=None, max_obstacles=3):
         logger.info("max_obstacles={}".format(max_obstacles))
+        self.max_obstacles = max_obstacles
         if token is None:
             self.remote_env = False
             self.env = RunEnv(visualize=visualize, max_obstacles=max_obstacles)
