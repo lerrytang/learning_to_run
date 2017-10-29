@@ -28,11 +28,15 @@ class EnvSampler(Process):
         self.ob_processor.reset()
         while episode_n < self.total_episodes:
 
-            # request for action and add noise
-            new_ob = self.ob_processor.process(new_ob)
-            observation = np.reshape(new_ob, [1, -1])
-            self.act_req_Q.put(observation)
-            action, qval = self.act_res_Q.get()
+            try:
+                # request for action and add noise
+                new_ob = self.ob_processor.process(new_ob)
+                observation = np.reshape(new_ob, [1, -1])
+                self.act_req_Q.put(observation)
+                action, qval = self.act_res_Q.get()
+            except:
+                break
+
             noise = self.rand_process.sample()
             # logger.info("pid={}, noise={}".format(self.pid, noise))
 

@@ -445,6 +445,9 @@ class DDPG(Agent):
         def simulate(act_req_Q, act_res_Q):
             while True:
                 observation = act_req_Q.get()
+                if observation is None:
+                    self.logger.info("Simulation thread quitting...")
+                    break
                 net_lock.acquire()
                 action, qval = self.actor.predict(observation)
                 net_lock.release()
@@ -487,7 +490,7 @@ class DDPG(Agent):
                 # self.logger.info("pid={}, noise={}".format(pid, noise))
 
                 steps += 1
-                if steps % self.config["num_samplers"] == 0:
+                if steps % self.config["train_every"] == 0:
                     net_lock.acquire()
                     loss, _ = self.train_actor_critic()
                     losses.append(loss)
@@ -520,6 +523,7 @@ class DDPG(Agent):
                     noise_dict[pid] = None
 
         th = []
+        ps = []
         for i in xrange(self.config["num_samplers"]):
             act_req_Q = Queue(maxsize=self.config["batch_size"])
             act_res_Q = Queue(maxsize=self.config["batch_size"])
@@ -529,16 +533,26 @@ class DDPG(Agent):
                                  act_res_Q=act_res_Q,
                                  ob_sub_Q=ob_sub_Q)
             sampler.start()
+            self.logger.info("Simulation process start to work, pid={}".format(sampler.pid))
+            ps.append(sampler)
             simulate_thread = threading.Thread(target=simulate, args=(act_req_Q, act_res_Q))
             simulate_thread.start()
             th.append(simulate_thread)
-            self.logger.info("Started one sampler thread")
 
-        train()
+        try:
+            train()
+        except:
+            self.logger.info("Quitting ...")
+        finally:
+            for p in ps:
+                p.join()
+            self.logger.info("All samplers joined")
+            for t in th:
+                t.join()
+            self.logger.info("All simulators joined")
+
         self.save_models()
         self.save_memory()
-        for t in th:
-            t.join()
         return None, None
 
     def test(self, logging=False):
