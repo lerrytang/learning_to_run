@@ -19,8 +19,9 @@ class EnvSampler(Process):
         self.act_res_Q = act_res_Q
         self.ob_sub_Q = ob_sub_Q
         real_act_dim = self.env.action_space.shape[0]
-        self.act_low = self.env.action_space.high[:real_act_dim]
-        self.act_high = self.env.action_space.low[:real_act_dim]
+        self.act_high = self.env.action_space.high[:real_act_dim]
+        self.act_low = self.env.action_space.low[:real_act_dim]
+        # logger.info("pid={}, act_high={}, act_low={}".format(self.pid, self.act_high, self.act_low))
 
     def run(self):
         logger.info("EnvSampler started, pid={}".format(self.pid))
@@ -41,12 +42,13 @@ class EnvSampler(Process):
                 break
 
             noise = self.rand_process.sample()
-            # logger.info("pid={}, noise={}".format(self.pid, noise))
 
             # apply action
             action = np.clip(action + noise, self.act_low, self.act_high)
             act_to_apply = action.squeeze()
             new_ob, reward, done, info = self.env.step(act_to_apply)
+
+            # logger.info("pid={}, action={}, noise={}".format(self.pid, action, noise))
 
             # bookkeeping
             episode_steps += 1
