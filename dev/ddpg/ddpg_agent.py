@@ -478,6 +478,8 @@ class DDPG(Agent):
 
             # train
             # self.logger.info("Train model")
+            if ob_sub_Q.empty():
+                continue
             msg = ob_sub_Q.get()
             pid = msg["pid"]
             observation = msg["observation"]
