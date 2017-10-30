@@ -438,100 +438,12 @@ class DDPG(Agent):
         return reward_hist, steps_hist
 
     def multi_learn(self, total_episodes):
-        import threading
-
-        net_lock = threading.Lock()
         ob_sub_Q = Queue(maxsize=self.config["batch_size"])
 
-        # pass a dummy observation
-        self.actor.predict(np.zeros([1,55]))
-        self.target.predict(np.zeros([1, 55]))
-        self.critic.predict([np.zeros([1, 55]), np.zeros([1, 18])])
-
-        def simulate(act_req_Q, act_res_Q):
-            while True:
-                observation = act_req_Q.get()
-                if observation is None:
-                    self.logger.info("Simulation thread quitting...")
-                    break
-                net_lock.acquire()
-                action, qval = self.actor.predict(observation)
-                net_lock.release()
-                act_res_Q.put((action, qval))
-
-        def train():
-            reward_dict = {}
-            action_dict = {}
-            noise_dict = {}
-            qval_dict = {}
-            loss_dict = {}
-
-            episode_n = 0
-            steps = 0
-            while episode_n < total_episodes:
-                msg = ob_sub_Q.get()
-                pid = msg["pid"]
-                observation = msg["observation"]
-                done = msg["done"]
-                episode_steps = msg["episode_steps"]
-                action = msg["action"]
-                if pid not in action_dict:
-                    action_dict[pid] = None
-                action_dict[pid] = self.append_hist(action_dict[pid], action)
-                noise = msg["noise"]
-                if pid not in noise_dict:
-                    noise_dict[pid] = None
-                noise_dict[pid] = self.append_hist(noise_dict[pid], noise)
-                qval = msg["qval"]
-                if pid not in qval_dict:
-                    qval_dict[pid] = None
-                qval_dict[pid] = self.append_hist(qval_dict[pid], qval)
-                reward = msg["reward"]
-                if pid not in reward_dict:
-                    reward_dict[pid] = reward
-                else:
-                    reward_dict[pid] += reward
-                self.memory.store(observation, action, reward, done, episode_steps)
-
-                steps += 1
-                if steps % self.config["train_every"] == 0:
-                    net_lock.acquire()
-                    loss, _ = self.train_actor_critic()
-                    net_lock.release()
-                    if pid not in loss_dict:
-                        loss_dict[pid] = None
-                    loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
-
-                if done:
-                    episode_n += 1
-
-                    self.save_models()
-                    if episode_n % self.config["save_snapshot_every"] == 0:
-                        self.save_memory()
-                        self.logger.info("Snapshot saved.")
-
-                    abs_noise = np.abs(noise_dict[pid])
-                    self.logger.info(
-                        "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
-                        "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(
-                            episode_n,
-                            episode_steps,
-                            reward_dict[pid],
-                            np.mean(loss_dict[pid]),
-                            np.mean(qval_dict[pid]),
-                            np.min(abs_noise),
-                            np.max(abs_noise),
-                            np.min(action_dict[pid]),
-                            np.max(action_dict[pid]),
-                        ))
-                    action_dict[pid] = None
-                    reward_dict[pid] = 0
-                    qval_dict[pid] = None
-                    noise_dict[pid] = None
-                    loss_dict[pid] = None
-
-        th = []
-        ps = []
+        # start env simulation processes
+        samplers = []
+        act_req_Qs = []
+        act_res_Qs = []
         for i in xrange(self.config["num_samplers"]):
             act_req_Q = Queue(maxsize=self.config["batch_size"])
             act_res_Q = Queue(maxsize=self.config["batch_size"])
@@ -540,25 +452,90 @@ class DDPG(Agent):
                                  act_req_Q=act_req_Q,
                                  act_res_Q=act_res_Q,
                                  ob_sub_Q=ob_sub_Q)
+            samplers.append(sampler)
+            act_res_Qs.append(act_res_Q)
+            act_req_Qs.append(act_req_Q)
             sampler.start()
             self.logger.info("Simulation process start to work, pid={}".format(sampler.pid))
-            ps.append(sampler)
-            simulate_thread = threading.Thread(target=simulate, args=(act_req_Q, act_res_Q))
-            simulate_thread.start()
-            th.append(simulate_thread)
 
-        try:
-            train()
-        except:
-            self.logger.info(sys.exc_info())
-            self.logger.info("Quitting ...")
-        finally:
-            for p in ps:
-                p.join()
-            self.logger.info("All samplers joined")
-            for t in th:
-                t.join()
-            self.logger.info("All simulators joined")
+        # start answering requests and training
+        reward_dict = {}
+        action_dict = {}
+        noise_dict = {}
+        qval_dict = {}
+        loss_dict = {}
+        episode_n = 0
+        steps = 0
+        while episode_n < total_episodes:
+
+            # check request and answer
+            # self.logger.info("Check requests")
+            for i, act_req_q in enumerate(act_req_Qs):
+                if not act_req_q.empty():
+                    observation = act_req_q.get()
+                    action, qval = self.actor.predict(observation)
+                    act_res_Qs[i].put((action, qval))
+
+            # train
+            # self.logger.info("Train model")
+            msg = ob_sub_Q.get()
+            pid = msg["pid"]
+            observation = msg["observation"]
+            done = msg["done"]
+            episode_steps = msg["episode_steps"]
+            action = msg["action"]
+            if pid not in action_dict:
+                action_dict[pid] = None
+            action_dict[pid] = self.append_hist(action_dict[pid], action)
+            noise = msg["noise"]
+            if pid not in noise_dict:
+                noise_dict[pid] = None
+            noise_dict[pid] = self.append_hist(noise_dict[pid], noise)
+            qval = msg["qval"]
+            if pid not in qval_dict:
+                qval_dict[pid] = None
+            qval_dict[pid] = self.append_hist(qval_dict[pid], qval)
+            reward = msg["reward"]
+            if pid not in reward_dict:
+                reward_dict[pid] = reward
+            else:
+                reward_dict[pid] += reward
+            self.memory.store(observation, action, reward, done, episode_steps)
+
+            steps += 1
+            if steps % self.config["train_every"] == 0:
+                loss, _ = self.train_actor_critic()
+                if pid not in loss_dict:
+                    loss_dict[pid] = None
+                loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
+
+            if done:
+                episode_n += 1
+
+                self.save_models()
+                if episode_n % self.config["save_snapshot_every"] == 0:
+                    self.save_memory()
+                    self.logger.info("Snapshot saved.")
+
+                abs_noise = np.abs(noise_dict[pid])
+                self.logger.info(
+                    "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
+                    "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(
+                        episode_n,
+                        episode_steps,
+                        reward_dict[pid],
+                        np.mean(loss_dict[pid]),
+                        np.mean(qval_dict[pid]),
+                        np.min(abs_noise),
+                        np.max(abs_noise),
+                        np.min(action_dict[pid]),
+                        np.max(action_dict[pid]),
+                    ))
+                action_dict[pid] = None
+                reward_dict[pid] = 0
+                qval_dict[pid] = None
+                noise_dict[pid] = None
+                loss_dict[pid] = None
 
         self.save_models()
         self.save_memory()

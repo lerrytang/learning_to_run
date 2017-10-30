@@ -37,7 +37,7 @@ DDPG:
     clear_vel: False
     use_swish: False
     num_samplers: 2
-    clip_norm: 1.0
+    clip_norm: 0.0
 TRPO:
     batch_size: 5000
     n_envs: 16
