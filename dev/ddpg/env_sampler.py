@@ -18,6 +18,9 @@ class EnvSampler(Process):
         self.act_req_Q = act_req_Q
         self.act_res_Q = act_res_Q
         self.ob_sub_Q = ob_sub_Q
+        real_act_dim = self.env.action_space.shape[0]
+        self.act_low = self.env.action_space.high[:real_act_dim]
+        self.act_high = self.env.action_space.low[:real_act_dim]
 
     def run(self):
         logger.info("EnvSampler started, pid={}".format(self.pid))
@@ -41,7 +44,7 @@ class EnvSampler(Process):
             # logger.info("pid={}, noise={}".format(self.pid, noise))
 
             # apply action
-            action = np.clip(action + noise, 0.0, 1.0)
+            action = np.clip(action + noise, self.act_low, self.act_high)
             act_to_apply = action.squeeze()
             new_ob, reward, done, info = self.env.step(act_to_apply)
 

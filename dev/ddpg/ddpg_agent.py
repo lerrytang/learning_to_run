@@ -458,10 +458,9 @@ class DDPG(Agent):
             action_dict = {}
             noise_dict = {}
             qval_dict = {}
+            loss_dict = {}
 
             episode_n = 0
-            from collections import deque
-            losses = deque(maxlen=1000)
             steps = 0
             while episode_n < total_episodes:
                 msg = ob_sub_Q.get()
@@ -487,14 +486,15 @@ class DDPG(Agent):
                 else:
                     reward_dict[pid] += reward
                 self.memory.store(observation, action, reward, done, episode_steps)
-                # self.logger.info("pid={}, noise={}".format(pid, noise))
 
                 steps += 1
                 if steps % self.config["train_every"] == 0:
                     net_lock.acquire()
                     loss, _ = self.train_actor_critic()
-                    losses.append(loss)
                     net_lock.release()
+                    if pid not in loss_dict:
+                        loss_dict[pid] = None
+                        loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
 
                 if done:
                     episode_n += 1
@@ -507,20 +507,22 @@ class DDPG(Agent):
                     abs_noise = np.abs(noise_dict[pid])
                     self.logger.info(
                         "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
-                        "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(episode_n,
-                                                                                     episode_steps,
-                                                                                     reward_dict[pid],
-                                                                                     np.mean(losses),
-                                                                                     np.mean(qval_dict[pid]),
-                                                                                     np.min(abs_noise),
-                                                                                     np.max(abs_noise),
-                                                                                     np.min(action_dict[pid]),
-                                                                                     np.max(action_dict[pid])
-                                                                                     ))
+                        "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(
+                            episode_n,
+                            episode_steps,
+                            reward_dict[pid],
+                            np.mean(loss_dict[pid]),
+                            np.mean(qval_dict[pid]),
+                            np.min(abs_noise),
+                            np.max(abs_noise),
+                            np.min(action_dict[pid]),
+                            np.max(action_dict[pid]),
+                        ))
                     action_dict[pid] = None
                     reward_dict[pid] = 0
                     qval_dict[pid] = None
                     noise_dict[pid] = None
+                    loss_dict[pid] = None
 
         th = []
         ps = []
