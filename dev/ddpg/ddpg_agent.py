@@ -60,6 +60,8 @@ class DDPG(Agent):
             self.config["num_samplers"] = 0
         if "clip_norm" not in self.config:
             self.config["clip_norm"] = 0
+        if "queue_size" not in self.config:
+            self.config["queue_size"] = 10000
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -438,15 +440,15 @@ class DDPG(Agent):
         return reward_hist, steps_hist
 
     def multi_learn(self, total_episodes):
-        ob_sub_Q = Queue(maxsize=self.config["batch_size"])
+        ob_sub_Q = Queue(maxsize=self.config["queue_size"])
 
         # start env simulation processes
         samplers = []
         act_req_Qs = []
         act_res_Qs = []
         for i in xrange(self.config["num_samplers"]):
-            act_req_Q = Queue(maxsize=self.config["batch_size"])
-            act_res_Q = Queue(maxsize=self.config["batch_size"])
+            act_req_Q = Queue(maxsize=self.config["queue_size"])
+            act_res_Q = Queue(maxsize=self.config["queue_size"])
             sampler = EnvSampler(env=NIPS(max_obstacles=self.env.max_obstacles),
                                  config=self.config,
                                  act_req_Q=act_req_Q,
