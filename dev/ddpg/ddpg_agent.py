@@ -58,6 +58,8 @@ class DDPG(Agent):
             self.config["use_swish"] = False
         if "num_samplers" not in self.config:
             self.config["num_samplers"] = 0
+        if "clip_norm" not in self.config:
+            self.config["clip_norm"] = 0
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -234,7 +236,10 @@ class DDPG(Agent):
 
         # compile
         critic = Model(inputs=[ob_input, act_input], outputs=[qval])
-        optimizer = Adam(lr=self.config["critic_lr"])
+        if self.config["clip_norm"] > 0:
+            optimizer = Adam(lr=self.config["critic_lr"], clipnorm=self.config["clip_norm"])
+        else:
+            optimizer = Adam(lr=self.config["critic_lr"])
         critic.compile(optimizer=optimizer, loss="mse")
         return critic
 
