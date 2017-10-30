@@ -15,6 +15,7 @@ from .layer_norm import LayerNorm
 
 import numpy as np
 import os
+import sys
 import util
 
 
@@ -494,7 +495,7 @@ class DDPG(Agent):
                     net_lock.release()
                     if pid not in loss_dict:
                         loss_dict[pid] = None
-                        loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
+                    loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
 
                 if done:
                     episode_n += 1
@@ -544,6 +545,7 @@ class DDPG(Agent):
         try:
             train()
         except:
+            self.logger.info(sys.exc_info())
             self.logger.info("Quitting ...")
         finally:
             for p in ps:
