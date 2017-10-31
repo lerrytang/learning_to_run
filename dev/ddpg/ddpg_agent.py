@@ -468,78 +468,85 @@ class DDPG(Agent):
         loss_dict = {}
         episode_n = 0
         steps = 0
+        req_count = 0
         while episode_n < total_episodes:
 
             # check request and answer
             # self.logger.info("Check requests")
             for i, act_req_q in enumerate(act_req_Qs):
                 if not act_req_q.empty():
-                    observation = act_req_q.get()
-                    action, qval = self.actor.predict(observation)
+                    msg = act_req_q.get()
+                    action, qval = self.actor.predict(msg["observation"])
                     act_res_Qs[i].put((action, qval))
+                    req_count += 1
+                    # self.logger.info("Action request from pid={} processed.".format(msg["pid"]))
 
             # train
             # self.logger.info("Train model")
-            if ob_sub_Q.empty():
-                continue
-            msg = ob_sub_Q.get()
-            pid = msg["pid"]
-            observation = msg["observation"]
-            done = msg["done"]
-            episode_steps = msg["episode_steps"]
-            action = msg["action"]
-            if pid not in action_dict:
-                action_dict[pid] = None
-            action_dict[pid] = self.append_hist(action_dict[pid], action)
-            noise = msg["noise"]
-            if pid not in noise_dict:
-                noise_dict[pid] = None
-            noise_dict[pid] = self.append_hist(noise_dict[pid], noise)
-            qval = msg["qval"]
-            if pid not in qval_dict:
-                qval_dict[pid] = None
-            qval_dict[pid] = self.append_hist(qval_dict[pid], qval)
-            reward = msg["reward"]
-            if pid not in reward_dict:
-                reward_dict[pid] = reward
-            else:
-                reward_dict[pid] += reward
-            self.memory.store(observation, action, reward, done, episode_steps)
+            while req_count > 0:
+                msg = ob_sub_Q.get()
+                pid = msg["pid"]
+                observation = msg["observation"]
+                done = msg["done"]
+                episode_steps = msg["episode_steps"]
+                action = msg["action"]
+                if pid not in action_dict:
+                    action_dict[pid] = None
+                action_dict[pid] = self.append_hist(action_dict[pid], action)
+                noise = msg["noise"]
+                if pid not in noise_dict:
+                    noise_dict[pid] = None
+                noise_dict[pid] = self.append_hist(noise_dict[pid], noise)
+                qval = msg["qval"]
+                if pid not in qval_dict:
+                    qval_dict[pid] = None
+                qval_dict[pid] = self.append_hist(qval_dict[pid], qval)
+                reward = msg["reward"]
+                if pid not in reward_dict:
+                    reward_dict[pid] = reward
+                else:
+                    reward_dict[pid] += reward
 
-            steps += 1
-            if steps % self.config["train_every"] == 0:
-                loss, _ = self.train_actor_critic()
-                if pid not in loss_dict:
+                assert np.all((action >= self.act_low) & (action <= self.act_high))
+                self.memory.store(observation, action, reward, done, episode_steps)
+
+                steps += 1
+                if steps % self.config["train_every"] == 0:
+                    loss, _ = self.train_actor_critic()
+                    if pid not in loss_dict:
+                        loss_dict[pid] = None
+                    loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
+                    # self.logger.info("Learned from pid={}".format(pid))
+
+                if done:
+                    episode_n += 1
+
+                    self.save_models()
+                    if episode_n % self.config["save_snapshot_every"] == 0:
+                        self.save_memory()
+                        self.logger.info("Snapshot saved.")
+
+                    abs_noise = np.abs(noise_dict[pid])
+                    self.logger.info(
+                        "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
+                        "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(
+                            episode_n,
+                            episode_steps,
+                            reward_dict[pid],
+                            np.mean(loss_dict[pid]),
+                            np.mean(qval_dict[pid]),
+                            np.min(abs_noise),
+                            np.max(abs_noise),
+                            np.min(action_dict[pid]),
+                            np.max(action_dict[pid]),
+                        ))
+                    action_dict[pid] = None
+                    reward_dict[pid] = 0
+                    qval_dict[pid] = None
+                    noise_dict[pid] = None
                     loss_dict[pid] = None
-                loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
 
-            if done:
-                episode_n += 1
-
-                self.save_models()
-                if episode_n % self.config["save_snapshot_every"] == 0:
-                    self.save_memory()
-                    self.logger.info("Snapshot saved.")
-
-                abs_noise = np.abs(noise_dict[pid])
-                self.logger.info(
-                    "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
-                    "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}]".format(
-                        episode_n,
-                        episode_steps,
-                        reward_dict[pid],
-                        np.mean(loss_dict[pid]),
-                        np.mean(qval_dict[pid]),
-                        np.min(abs_noise),
-                        np.max(abs_noise),
-                        np.min(action_dict[pid]),
-                        np.max(action_dict[pid]),
-                    ))
-                action_dict[pid] = None
-                reward_dict[pid] = 0
-                qval_dict[pid] = None
-                noise_dict[pid] = None
-                loss_dict[pid] = None
+                req_count -= 1
 
         self.save_models()
         self.save_memory()

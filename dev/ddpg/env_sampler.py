@@ -36,7 +36,7 @@ class EnvSampler(Process):
                 # request for action and add noise
                 new_ob = self.ob_processor.process(new_ob)
                 observation = np.reshape(new_ob, [1, -1])
-                self.act_req_Q.put(observation)
+                self.act_req_Q.put({"pid": self.pid, "observation": observation})
                 action, qval = self.act_res_Q.get()
             except:
                 break
