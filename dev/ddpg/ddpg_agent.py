@@ -476,6 +476,8 @@ class DDPG(Agent):
         req_count = 0
         while episode_n < total_episodes:
 
+            assert req_count == 0
+
             # check request and answer
             # self.logger.info("Check requests")
             for i, act_req_q in enumerate(act_req_Qs):
@@ -488,14 +490,8 @@ class DDPG(Agent):
 
             # train
             # self.logger.info("Train model")
-            # if req_count > 0:
             while req_count > 0:
-                try:
-                    msg = ob_sub_Q.get(timeout=10)
-                    self.logger.info("ob_sub_Q.get() timeout, try later")
-                except Queue.Empty:
-                    break
-
+                msg = ob_sub_Q.get(timeout=10)
                 req_count -= 1
 
                 pid = msg["pid"]
