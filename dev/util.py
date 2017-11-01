@@ -16,11 +16,16 @@ from ddpg.rand import OUPfromWiki as OUP
 from ob_processor import ObservationProcessor, BodySpeedAugmentor, SecondOrderAugmentor
 from ob_processor import NormalizedFirstOrder, SecondRound
 import random
-
+import numpy as np
 
 # ============================================= #
 #             DDPG related                      #
 # ============================================= #
+
+def process_ob(ob_processor, ob):
+    ob = ob_processor.process(ob)
+    return np.reshape(ob, [1, -1])
+
 
 def create_rand_process(env, config):
     if "jump" in config and config["jump"]:

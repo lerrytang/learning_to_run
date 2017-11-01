@@ -30,12 +30,11 @@ class EnvSampler(Process):
         episode_reward = 0
         new_ob = self.env.reset()
         self.ob_processor.reset()
+        observation = util.process_ob(self.ob_processor, new_ob)
         while episode_n < self.total_episodes:
 
             try:
                 # request for action and add noise
-                new_ob = self.ob_processor.process(new_ob)
-                observation = np.reshape(new_ob, [1, -1])
                 self.act_req_Q.put({"pid": self.pid, "observation": observation})
                 action, qval = self.act_res_Q.get()
             except:
@@ -48,6 +47,7 @@ class EnvSampler(Process):
             act_to_apply = action.squeeze()
             new_ob, reward, done, info = self.env.step(act_to_apply)
 
+            observation_t1 = util.process_ob(self.ob_processor, new_ob)
             # logger.info("pid={}, action={}, noise={}".format(self.pid, action, noise))
 
             # bookkeeping
@@ -59,6 +59,7 @@ class EnvSampler(Process):
                    "observation": observation,
                    "action": action,
                    "reward": reward,
+                   "observation_t1": observation_t1,
                    "done": done,
                    "episode_steps": episode_steps,
                    "qval": qval,
@@ -82,4 +83,8 @@ class EnvSampler(Process):
                 episode_steps = 0
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
+                observation = util.process_ob(self.ob_processor, new_ob)
+            else:
+                observation = observation_t1
+
         self.env.close()

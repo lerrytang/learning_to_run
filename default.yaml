@@ -2,6 +2,7 @@ DDPG:
     use_bn: False
     save_snapshot_every: 1000
     train_every: 1
+    num_train: 1
     jump: False
     gamma: 0.99
     tau: 0.001
@@ -16,7 +17,7 @@ DDPG:
     sigma_init: 0.02
     sigma_min: 0.002
     scale_min: 0.08
-    total_episodes: 30000
+    total_episodes: 50000
     max_steps: 1000
     memory_warmup: 10000
     memory_capacity: 1000000
@@ -28,7 +29,6 @@ DDPG:
     rs_weight: 0.0005
     include_limb_vel: True
     lrelu: 0.3
-    toe_dist_threshold: 0.1
     reward_scale: 10.0
     use_ln: False
     max_obstacles: 10

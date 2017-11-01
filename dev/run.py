@@ -120,7 +120,7 @@ def train(config, trial_dir=None, visualize=False, overwrite_config=False):
     logger.info("Finished (pid={}).".format(pid))
 
 
-def test(t_agent, trial_dir, visual_flag, token):
+def test(t_agent, trial_dir, visual_flag, test_episodes, token):
     assert trial_dir is not None and os.path.exists(trial_dir)
 
     # prepare trial environment
@@ -155,16 +155,18 @@ def test(t_agent, trial_dir, visual_flag, token):
 
     # test
     util.print_sec_header(logger, "Testing")
-    rewards = agent.test(logging=env.remote_env)
+    rewards = agent.test(test_episodes=test_episodes,
+                         logging=env.remote_env)
     logger.info("avg_reward={}".format(np.mean(rewards)))
     env.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--agent', default='TRPO', choices=SUPPORTED_AGENTS)
+    parser.add_argument('--agent', default='DDPG', choices=SUPPORTED_AGENTS)
     parser.add_argument('--config_yaml', default=None, type=str)
     parser.add_argument('--test', dest='train', action='store_false', default=True)
+    parser.add_argument('--test_episodes', default=10, type=int)
     parser.add_argument('--token', default=None, type=str)
     parser.add_argument('--visualize', action='store_true', default=False)
     parser.add_argument('--trial_dir', default=None, type=str)
@@ -180,4 +182,4 @@ if __name__ == "__main__":
         config["agent"] = args.agent
         train(config, args.trial_dir, args.visualize, args.overwrite_config)
     else:
-        test(args.agent, args.trial_dir, args.visualize, args.token)
+        test(args.agent, args.trial_dir, args.visualize, args.test_episodes, args.token)

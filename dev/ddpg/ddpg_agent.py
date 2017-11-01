@@ -62,6 +62,8 @@ class DDPG(Agent):
             self.config["clip_norm"] = 0
         if "queue_size" not in self.config:
             self.config["queue_size"] = 10000
+        if "num_train" not in self.config:
+            self.config["num_train"] = 1
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -357,13 +359,12 @@ class DDPG(Agent):
         steps_hist = []
         new_ob = self.env.reset()
         self.ob_processor.reset()
+        observation = util.process_ob(self.ob_processor, new_ob)
 
         train_step_counter = 0
         while episode_n < total_episodes:
 
             # select action and add noise
-            new_ob = self.ob_processor.process(new_ob)
-            observation = np.reshape(new_ob, [1, -1])
             action, qval = self.actor.predict(observation)
             noise = self.rand_process.sample()
             noisy_hist = self.append_hist(noisy_hist, noise)
@@ -376,6 +377,8 @@ class DDPG(Agent):
                 act_to_apply = np.tile(act_to_apply, 2)
             new_ob, reward, done, info = self.env.step(act_to_apply)
 
+            observation_t1 = util.process_ob(self.ob_processor, new_ob)
+
             # bookkeeping
             episode_reward += reward
             episode_steps += 1
@@ -384,7 +387,7 @@ class DDPG(Agent):
 
             # store experience
             assert np.all((action >= self.act_low) & (action <= self.act_high))
-            self.memory.store(observation, action, reward, done, episode_steps)
+            self.memory.store(observation, action, reward, observation_t1, done, episode_steps)
 
             # train
             if train_step_counter % self.config["train_every"] == 0:
@@ -432,7 +435,9 @@ class DDPG(Agent):
                 noisy_hist = None
                 new_ob = self.env.reset()
                 self.ob_processor.reset()
-                done = False
+                observation = util.process_ob(self.ob_processor, new_ob)
+            else:
+                observation = observation_t1
 
         self.save_models()
         self.save_memory()
@@ -483,10 +488,11 @@ class DDPG(Agent):
 
             # train
             # self.logger.info("Train model")
-            while req_count > 0:
+            if req_count > 0:
                 msg = ob_sub_Q.get()
                 pid = msg["pid"]
                 observation = msg["observation"]
+                observation_t1 = msg["observation_t1"]
                 done = msg["done"]
                 episode_steps = msg["episode_steps"]
                 action = msg["action"]
@@ -508,14 +514,15 @@ class DDPG(Agent):
                     reward_dict[pid] += reward
 
                 assert np.all((action >= self.act_low) & (action <= self.act_high))
-                self.memory.store(observation, action, reward, done, episode_steps)
+                self.memory.store(observation, action, reward, observation_t1, done, episode_steps)
 
                 steps += 1
                 if steps % self.config["train_every"] == 0:
-                    loss, _ = self.train_actor_critic()
-                    if pid not in loss_dict:
-                        loss_dict[pid] = None
-                    loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
+                    for i in xrange(self.config["num_train"]):
+                        loss, _ = self.train_actor_critic()
+                        if pid not in loss_dict:
+                            loss_dict[pid] = None
+                        loss_dict[pid] = self.append_hist(loss_dict[pid], loss)
                     # self.logger.info("Learned from pid={}".format(pid))
 
                 if done:
@@ -552,24 +559,24 @@ class DDPG(Agent):
         self.save_memory()
         return None, None
 
-    def test(self, logging=False):
+    def test(self, test_episodes, logging=False):
         all_rewards = []
         episode_count = 0
         episode_reward = 0
         episode_steps = 0
         new_ob = self.env.reset()
         self.ob_processor.reset()
-
+        observation = util.process_ob(self.ob_processor, new_ob)
         while True:
 
-            new_ob = self.ob_processor.process(new_ob)
-            observation = np.reshape(new_ob, [1, -1])
             action, _ = self.actor.predict(observation)
             action = np.clip(action, self.act_low, self.act_high)
             act_to_apply = action.squeeze()
             if self.jump:
                 act_to_apply = np.tile(act_to_apply, 2)
             new_ob, reward, done, info = self.env.step(act_to_apply)
+            observation_t1 = util.process_ob(self.ob_processor, new_ob)
+
             episode_reward += reward
             episode_steps += 1
 
@@ -588,8 +595,12 @@ class DDPG(Agent):
                 self.ob_processor.reset()
                 if not new_ob:
                     break
-                if episode_count >= 10:
+                else:
+                    observation = util.process_ob(self.ob_processor, new_ob)
+                if episode_count >= test_episodes:
                     break
+            else:
+                observation = observation_t1
 
         return all_rewards
 
