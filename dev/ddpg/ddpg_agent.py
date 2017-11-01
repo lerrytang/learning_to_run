@@ -491,7 +491,7 @@ class DDPG(Agent):
             # train
             # self.logger.info("Train model")
             while req_count > 0:
-                msg = ob_sub_Q.get(timeout=10)
+                msg = ob_sub_Q.get()
                 req_count -= 1
 
                 pid = msg["pid"]
