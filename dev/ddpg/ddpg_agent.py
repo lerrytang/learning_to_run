@@ -488,8 +488,16 @@ class DDPG(Agent):
 
             # train
             # self.logger.info("Train model")
-            if req_count > 0:
-                msg = ob_sub_Q.get()
+            # if req_count > 0:
+            while req_count > 0:
+                try:
+                    msg = ob_sub_Q.get(timeout=10)
+                    self.logger.info("ob_sub_Q.get() timeout, try later")
+                except Queue.Empty:
+                    break
+
+                req_count -= 1
+
                 pid = msg["pid"]
                 observation = msg["observation"]
                 observation_t1 = msg["observation_t1"]
@@ -553,8 +561,6 @@ class DDPG(Agent):
                     noise_dict[pid] = None
                     loss_dict[pid] = None
 
-                req_count -= 1
-
         self.save_models()
         self.save_memory()
         return None, None
@@ -581,7 +587,8 @@ class DDPG(Agent):
             episode_steps += 1
 
             if logging:
-                self.logger.info("episode_steps={}, episode_reward={}".format(episode_steps, episode_reward))
+                self.logger.info("episode={}, episode_steps={}, episode_reward={}".format(
+                    episode_count+1, episode_steps, episode_reward))
 
             done |= (episode_steps >= self.config["max_steps"])
             if done:
