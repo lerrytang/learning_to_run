@@ -14,11 +14,11 @@ class LayerNorm(Layer):
         self.bias_initializer = initializers.get(bias_initializer)
 
     def build(self, input_shape):
-        self.scale = self.add_weight(shape=(input_shape[-1],),
+        self.scale = self.add_weight(shape=(),
                                      initializer=self.scale_initializer,
                                      trainable=self.trainable,
                                      name='{}_scale'.format(self.name))
-        self.bias = self.add_weight(shape=(input_shape[-1],),
+        self.bias = self.add_weight(shape=(),
                                     initializer=self.bias_initializer,
                                     trainable=self.trainable,
                                     name='{}_bias'.format(self.name))
