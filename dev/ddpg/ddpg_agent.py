@@ -63,6 +63,8 @@ class DDPG(Agent):
             self.config["queue_size"] = 10000
         if "num_train" not in self.config:
             self.config["num_train"] = 1
+        if "clip_noise" not in self.config:
+            self.config["clip_noise"] = -1
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -368,6 +370,8 @@ class DDPG(Agent):
             # select action and add noise
             action, qval = self.actor.predict(observation)
             noise = self.rand_process.sample()
+            if self.config["clip_noise"] >= 0:
+                noise = np.clip(noise, -self.config["clip_noise"], self.config["clip_noise"])
             noisy_hist = self.append_hist(noisy_hist, noise)
 
             # apply action

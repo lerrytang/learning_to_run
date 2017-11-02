@@ -15,6 +15,7 @@ class EnvSampler(Process):
         self.rand_process = util.create_rand_process(env, config)
         self.max_steps = config["max_steps"]
         self.total_episodes = config["total_episodes"]
+        self.noise_clip = config["clip_noise"]
         self.act_req_Q = act_req_Q
         self.act_res_Q = act_res_Q
         self.ob_sub_Q = ob_sub_Q
@@ -41,6 +42,9 @@ class EnvSampler(Process):
                 break
 
             noise = self.rand_process.sample()
+
+            if self.noise_clip >= 0:
+                noise = np.clip(noise, -self.noise_clip, self.noise_clip)
 
             # apply action
             action = np.clip(action + noise, self.act_low, self.act_high)

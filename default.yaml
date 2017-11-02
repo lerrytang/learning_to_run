@@ -21,7 +21,7 @@ DDPG:
     max_steps: 1000
     memory_warmup: 10000
     memory_capacity: 1000000
-    annealing_steps: 4000000
+    annealing_steps: 1000000
     actor_hiddens: [128, 128, 64, 64]
     critic_hiddens: [128, 128, 64, 64]
     ob_processor: "2ndround"
@@ -30,7 +30,7 @@ DDPG:
     include_limb_vel: True
     lrelu: 0.3
     reward_scale: 10.0
-    use_ln: False
+    use_ln: True
     max_obstacles: 10
     ob_dist_scale: 1.0
     fake_ob_pos: 3.0
@@ -39,6 +39,7 @@ DDPG:
     num_samplers: 2
     clip_norm: 0.0
     queue_size: 10000
+    clip_noise: -1
 TRPO:
     batch_size: 5000
     n_envs: 16
