@@ -558,13 +558,12 @@ class DDPG(Agent):
                                  ob_sub_Q=ob_sub_q)
             sampler.start()
             samplers.append(sampler)
-            # 影の分身術！
             t = Thread(target=do_work, args=(i, act_req_q, act_res_q, ob_sub_q))
             th.append(t)
             t.start()
 
-        for t in th:
-            t.join()
+        for s in samplers:
+            s.join()
 
         self.save_models()
         self.save_memory()
