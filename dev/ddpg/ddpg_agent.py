@@ -8,7 +8,7 @@ from keras.models import Model
 from keras.layers import Input, Dense, Concatenate, Lambda, Activation, BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.regularizers import l2
-from keras.initializers import VarianceScaling, RandomUniform
+from keras.initializers import VarianceScaling, RandomUniform, RandomNormal, Zeros
 from keras.optimizers import Adam
 import keras.backend as K
 from .layer_norm import LayerNorm
@@ -146,11 +146,23 @@ class DDPG(Agent):
 
         # critic hidden part
         for i, num_hiddens in enumerate(critic_hiddens):
+
+            n_input = self.ob_dim[0] if i == 0 else critic_hiddens[i - 1]
+            if self.config["merge_at_layer"] == i:
+                n_input += self.act_dim[0]
+            self.logger.info("i={}, n_input={}".format(i, n_input))
+            if self.config["use_selu"]:
+                kernel_init = RandomNormal(mean=0, stddev=np.sqrt(1.0 / n_input))
+                bias_init = Zeros()
+            else:
+                kernel_init = VarianceScaling(scale=1.0 / 3, distribution="uniform")
+                bias_init = VarianceScaling(scale=1.0 / 3, distribution="uniform")
+
             x = Dense(num_hiddens,
                       activation=None,
                       trainable=trainable,
-                      kernel_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
-                      bias_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
+                      kernel_initializer=kernel_init,
+                      bias_initializer=bias_init,
                       kernel_regularizer=l2(self.config["critic_l2"]),
                       name="critic_fc{}".format(i + 1))(x)
 
@@ -196,11 +208,21 @@ class DDPG(Agent):
 
         # actor hidden part
         for i, num_hiddens in enumerate(actor_hiddens):
+
+            n_input = self.ob_dim[0] if i == 0 else actor_hiddens[i - 1]
+            self.logger.info("i={}, n_input={}".format(i, n_input))
+            if self.config["use_selu"]:
+                kernel_init = RandomNormal(mean=0, stddev=np.sqrt(1.0 / n_input))
+                bias_init = Zeros()
+            else:
+                kernel_init = VarianceScaling(scale=1.0 / 3, distribution="uniform")
+                bias_init = VarianceScaling(scale=1.0 / 3, distribution="uniform")
+
             x = Dense(num_hiddens,
                       activation=None,
                       trainable=trainable,
-                      kernel_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
-                      bias_initializer=VarianceScaling(scale=1.0 / 3, distribution="uniform"),
+                      kernel_initializer=kernel_init,
+                      bias_initializer=bias_init,
                       kernel_regularizer=l2(self.config["actor_l2"]),
                       name="actor_fc{}".format(i + 1))(x)
 

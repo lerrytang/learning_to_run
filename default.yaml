@@ -30,7 +30,7 @@ DDPG:
     include_limb_vel: True
     lrelu: 0.3
     reward_scale: 10.0
-    use_ln: True
+    use_ln: False
     use_selu: True
     max_obstacles: 10
     ob_dist_scale: 1.0
