@@ -12,6 +12,7 @@ from keras.initializers import VarianceScaling, RandomUniform
 from keras.optimizers import Adam
 import keras.backend as K
 from .layer_norm import LayerNorm
+from .layer_selu import LayerSELU
 
 import numpy as np
 import os
@@ -67,6 +68,8 @@ class DDPG(Agent):
             self.config["clip_noise"] = -1
         if "force_overwrite" not in self.config:
             self.config["force_overwrite"] = False
+        if "use_selu" not in self.config:
+            self.config["use_selu"] = False
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -160,6 +163,8 @@ class DDPG(Agent):
 
             if self.config["use_swish"]:
                 x = swish(x, name="critic_swish{}".format(i + 1))
+            elif self.config["use_selu"]:
+                x = LayerSELU(name="critic_selu{}".format(i + 1))(x)
             else:
                 if lrelu > 0:
                     x = LeakyReLU(alpha=lrelu, name = "critic_lrelu{}".format(i + 1))(x)
@@ -208,6 +213,8 @@ class DDPG(Agent):
 
             if self.config["use_swish"]:
                 x = swish(x, name="actor_swish{}".format(i + 1))
+            elif self.config["use_selu"]:
+                x = LayerSELU(name="actor_selu{}".format(i + 1))(x)
             else:
                 if lrelu > 0:
                     x = LeakyReLU(alpha=lrelu, name = "actor_lrelu{}".format(i + 1))(x)
