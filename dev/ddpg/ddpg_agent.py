@@ -65,6 +65,8 @@ class DDPG(Agent):
             self.config["num_train"] = 1
         if "clip_noise" not in self.config:
             self.config["clip_noise"] = -1
+        if "force_overwrite" not in self.config:
+            self.config["force_overwrite"] = False
 
         if self.config["num_samplers"] > 0:
             self.logger.info("<Multiprocess>")
@@ -643,7 +645,7 @@ class DDPG(Agent):
         self.actor.load_weights(paths["actor"])
         self.critic.load_weights(paths["critic"])
         self.target.load_weights(paths["target"])
-        if overwrite_target:
+        if overwrite_target or self.config["force_overwrite"]:
             self.logger.info("Overwrite target network")
             # hard copy weights
             self._copy_critic_weights(self.critic, self.actor)
@@ -659,6 +661,6 @@ class DDPG(Agent):
         loaded = False
         if os.path.exists(path):
             self.memory.load_memory(path)
-            self.logger.info("Loaded replay buffer from {}".format(path))
+            self.logger.info("Loaded replay buffer from {}, size={}".format(path, self.memory.size))
             loaded = True
         return loaded

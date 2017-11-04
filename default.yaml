@@ -40,6 +40,7 @@ DDPG:
     clip_norm: 0.0
     queue_size: 10000
     clip_noise: -1
+    force_overwrite: False
 TRPO:
     batch_size: 5000
     n_envs: 16
