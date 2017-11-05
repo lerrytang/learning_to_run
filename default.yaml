@@ -15,7 +15,7 @@ DDPG:
     merge_at_layer: 1
     theta: 0.005
     sigma_init: 0.01
-    scale_min: 0.001
+    sigma_min: 0.000004
     total_episodes: 50000
     max_steps: 1000
     memory_warmup: 10000

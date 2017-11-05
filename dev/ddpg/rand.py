@@ -33,17 +33,16 @@ class OUPfromWiki:
     Ornstein Uhlenbeck Process whose implementation follows wikipedia
     """
 
-    def __init__(self, action_dim, theta, sigma, init_val=0.0, scale_min=0, annealing_steps=0, seed=0):
+    def __init__(self, action_dim, theta, sigma, init_val=0.0, sigma_min=4e-6, annealing_steps=0, seed=0):
         self.action_dim = action_dim
         self.theta = theta
         self.sigma = sigma
+        self.sigma_min = sigma_min
 
-        self.scale = 1.0
-        self.scale_min = scale_min
         if annealing_steps > 0:
-            self.scale_delta = (self.scale - scale_min) / annealing_steps
+            self.sigma_delta = (self.sigma - sigma_min) / float(annealing_steps)
         else:
-            self.scale_delta = 0.0
+            self.sigma_delta = 0.0
 
         # initialize x0
         self.xt = np.ones(action_dim) * init_val
@@ -57,8 +56,7 @@ class OUPfromWiki:
         """
         delta_xt = self.theta * (-1.0 * self.xt) + self.sigma * np.random.randn(self.action_dim)
         self.xt += delta_xt
-        noise = self.scale * self.xt
-        self.scale = max(self.scale - self.scale_delta, self.scale_min)
-        return noise
+        self.sigma = max(self.sigma - self.sigma_delta, self.sigma_min)
+        return self.xt
 
 
