@@ -36,7 +36,7 @@ def create_rand_process(env, config):
         action_dim=act_dim,
         theta=config["theta"],
         sigma=config["sigma_init"],
-        scale_min=config["scale_min"],
+        sigma_min=config["sigma_min"],
         annealing_steps=config["annealing_steps"],
         seed=random.randint(0, 10000))
 

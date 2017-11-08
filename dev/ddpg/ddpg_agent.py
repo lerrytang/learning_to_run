@@ -58,8 +58,10 @@ class DDPG(Agent):
             self.config["use_swish"] = False
         if "num_samplers" not in self.config:
             self.config["num_samplers"] = 0
-        if "clip_norm" not in self.config:
-            self.config["clip_norm"] = 0
+        if "actor_clip_norm" not in self.config:
+            self.config["actor_clip_norm"] = 0
+        if "critic_clip_norm" not in self.config:
+            self.config["critic_clip_norm"] = 0
         if "queue_size" not in self.config:
             self.config["queue_size"] = 10000
         if "num_train" not in self.config:
@@ -258,7 +260,11 @@ class DDPG(Agent):
 
         # compile model
         actor = Model(inputs=[ob_input], outputs=[action, qval])
-        actor.compile(optimizer=Adam(lr=self.config["actor_lr"]),
+        if self.config["actor_clip_norm"] > 0:
+            optimizer = Adam(lr=self.config["actor_lr"], clipnorm=self.config["actor_clip_norm"])
+        else:
+            optimizer = Adam(lr=self.config["actor_lr"])
+        actor.compile(optimizer=optimizer,
                       loss=[action_sqr, minus_Q],
                       loss_weights=[self.config["actor_l2_action"], 1])
         return actor
@@ -273,8 +279,8 @@ class DDPG(Agent):
 
         # compile
         critic = Model(inputs=[ob_input, act_input], outputs=[qval])
-        if self.config["clip_norm"] > 0:
-            optimizer = Adam(lr=self.config["critic_lr"], clipnorm=self.config["clip_norm"])
+        if self.config["critic_clip_norm"] > 0:
+            optimizer = Adam(lr=self.config["critic_lr"], clipnorm=self.config["critic_clip_norm"])
         else:
             optimizer = Adam(lr=self.config["critic_lr"])
         critic.compile(optimizer=optimizer, loss="mse")
