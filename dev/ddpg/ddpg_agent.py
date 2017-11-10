@@ -131,6 +131,8 @@ class DDPG(Agent):
         self._copy_critic_weights(self.critic, self.target)
         self._copy_actor_weights(self.actor, self.target)
 
+        self.target_update_counter = 0
+
     def _build_critic_part(self, ob_input, act_input, critic_hiddens, lrelu, trainable=True):
 
         assert self.config["merge_at_layer"] <= len(critic_hiddens)
@@ -364,9 +366,17 @@ class DDPG(Agent):
             # assert np.allclose(q_actor, q_critic)
             # train actor
             actor_hist = self._train_actor(ob0, action, reward, ob1, done)
-            # soft update weights
-            self._copy_critic_weights(self.critic, self.target, tau=self.config["tau"])
-            self._copy_actor_weights(self.actor, self.target, tau=self.config["tau"])
+
+            # update target
+            if self.config["tau"] <= 1.0:
+                self._copy_critic_weights(self.critic, self.target, tau=self.config["tau"])
+                self._copy_actor_weights(self.actor, self.target, tau=self.config["tau"])
+            else:
+                self.target_update_counter += 1
+                self.target_update_counter %= int(self.config["tau"])
+                if self.target_update_counter == 0:
+                    self._copy_critic_weights(self.critic, self.target)
+                    self._copy_actor_weights(self.actor, self.target)
 
             return critic_hist.history["loss"][0], -1 * actor_hist.history["qval_loss"][0]
 
