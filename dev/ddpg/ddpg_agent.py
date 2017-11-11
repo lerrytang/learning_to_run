@@ -1,7 +1,8 @@
 from agent import Agent
 from nipsenv import NIPS
 from env_sampler import EnvSampler
-from multiprocessing import Queue, Process
+from multiprocessing import Queue
+from threading import Thread, Lock
 from mem import ReplayBuffer as RB
 
 from keras.models import Model
@@ -497,37 +498,41 @@ class DDPG(Agent):
         return reward_hist, steps_hist
 
     def multi_learn(self, total_episodes):
-        from threading import Thread
-        from threading import Lock
 
-        model_lock = Lock()
+        self.should_cont = True
+        act_req_q = Queue(self.config["queue_size"])
+        ob_sub_q = Queue(self.config["queue_size"])
         mem_lock = Lock()
-        episode_lock = Lock()
+        model_lock = Lock()
+        from collections import deque
+        losses = deque(maxlen=1000)
 
-        # this is necessary if threading is enabled
-        self.logger.info("Warm up Keras model methods with main thread, pid={}".format(os.getpid()))
-        self.single_learn(100, force_learn=True)
+        # start env_sampler processes
+        act_res_Qs = {}
+        samplers = []
+        for i in xrange(self.config["num_samplers"]):
+            act_res_q = Queue(self.config["queue_size"])
+            sampler = EnvSampler(env=NIPS(max_obstacles=self.env.max_obstacles),
+                                 config=self.config,
+                                 act_req_Q=act_req_q,
+                                 act_res_Q=act_res_q,
+                                 ob_sub_Q=ob_sub_q)
+            sampler.start()
+            act_res_Qs[sampler.pid] = act_res_q
+            samplers.append(sampler)
+            self.logger.info("Worker process (pid={}) forked.".format(sampler.pid))
 
-        def do_work(i, act_req_q, act_res_q, ob_sub_q):
-            self.logger.info("Worker{} forked.".format(i))
+        # start experience saver thread
+        def episode_manager(all_workers):
+            self.logger.info("episode_manager forked.")
+            episode_reward = {pid:0 for pid in all_workers}
+            episode_steps = {pid:0 for pid in all_workers}
+            episode_qval = {pid:[] for pid in all_workers}
+            action_hist = {pid:None for pid in all_workers}
+            noise_hist = {pid:None for pid in all_workers}
 
-            episode_reward = 0
-            episode_steps = 0
-            episode_losses = []
-            episode_qval = []
-            action_hist = None
-            noise_hist = None
-            episode_lock.acquire()
-            episode_n = self.episode_n
-            episode_lock.release()
+            episode_n = 0
             while episode_n < total_episodes:
-                # apply action
-                msg = act_req_q.get()
-                model_lock.acquire()
-                action, qval = self.actor.predict(msg["observation"])
-                model_lock.release()
-                act_res_q.put((action, qval))
-                # get post-action observations
                 msg = ob_sub_q.get()
                 pid = msg["pid"]
                 observation = msg["observation"]
@@ -537,45 +542,31 @@ class DDPG(Agent):
                 done = msg["done"]
                 noise = msg["noise"]
                 # record
-                episode_reward += reward
-                episode_steps += 1
+                episode_reward[pid] += reward
+                episode_steps[pid] += 1
                 assert np.all((action >= self.act_low) & (action <= self.act_high))
-                action_hist = self.append_hist(action_hist, action)
-                noise_hist = self.append_hist(noise_hist, noise)
-                episode_qval.append(qval)
+                action_hist[pid] = self.append_hist(action_hist[pid], action)
+                noise_hist[pid] = self.append_hist(noise_hist[pid], noise)
+                episode_qval[pid].append(qval)
                 mem_lock.acquire()
-                self.memory.store(observation, action, reward, observation_t1, done, episode_steps)
+                self.memory.store(observation, action, reward, observation_t1, done, episode_steps[pid])
                 mem_lock.release()
-                # train
-                if episode_steps % self.config["train_every"] == 0:
-                    for i in xrange(self.config["num_train"]):
-                        mem_lock.acquire()
-                        model_lock.acquire()
-                        loss, _ = self.train_actor_critic()
-                        model_lock.release()
-                        mem_lock.release()
-                        if loss is not None:
-                            episode_losses.append(loss)
-                # post-episode
+                # on episode end
                 if done:
-                    episode_lock.acquire()
-                    self.episode_n += 1
-                    episode_n = self.episode_n
-                    episode_lock.release()
-                    abs_noise = np.abs(noise_hist)
+                    episode_n += 1
+                    abs_noise = np.abs(noise_hist[pid])
                     self.logger.info(
                         "episode={0}, steps={1}, rewards={2:.4f}, avg_loss={3:.4f}, avg_q={4:.4f}, "
                         "noise=[{5:.4f}, {6:.4f}], action=[{7:.4f}, {8:.4f}], pid={9}".format(episode_n,
-                                                                                              episode_steps,
-                                                                                              episode_reward,
+                                                                                              episode_steps[pid],
+                                                                                              episode_reward[pid],
+                                                                                              np.mean(losses),
                                                                                               np.mean(
-                                                                                                  episode_losses),
-                                                                                              np.mean(
-                                                                                                  episode_qval),
+                                                                                                  episode_qval[pid]),
                                                                                               np.min(abs_noise),
                                                                                               np.max(abs_noise),
-                                                                                              np.min(action_hist),
-                                                                                              np.max(action_hist),
+                                                                                              np.min(action_hist[pid]),
+                                                                                              np.max(action_hist[pid]),
                                                                                               pid
                                                                                               ))
                     model_lock.acquire()
@@ -589,29 +580,36 @@ class DDPG(Agent):
                         self.logger.info("Snapshot saved.")
 
                     # reset values
-                    episode_reward = 0
-                    episode_steps = 0
-                    episode_losses = []
-                    episode_qval = []
-                    action_hist = None
-                    noise_hist = None
+                    episode_reward[pid] = 0
+                    episode_steps[pid] = 0
+                    # episode_losses = []
+                    episode_qval[pid] = []
+                    action_hist[pid] = None
+                    noise_hist[pid] = None
+            self.should_cont = False
 
-        th = []
-        samplers = []
-        for i in xrange(self.config["num_samplers"]):
-            act_req_q = Queue(self.config["queue_size"])
-            act_res_q = Queue(self.config["queue_size"])
-            ob_sub_q = Queue(self.config["queue_size"])
-            sampler = EnvSampler(env=NIPS(max_obstacles=self.env.max_obstacles),
-                                 config=self.config,
-                                 act_req_Q=act_req_q,
-                                 act_res_Q=act_res_q,
-                                 ob_sub_Q=ob_sub_q)
-            sampler.start()
-            samplers.append(sampler)
-            t = Thread(target=do_work, args=(i, act_req_q, act_res_q, ob_sub_q))
-            th.append(t)
-            t.start()
+        t = Thread(target=episode_manager,  args=(act_res_Qs.keys(),))
+        t.start()
+
+        while self.should_cont:
+            # answer a request
+            req_msg = act_req_q.get()
+            requester_id = req_msg["pid"]
+            observation = req_msg["observation"]
+            model_lock.acquire()
+            action, qval = self.actor.predict(observation)
+            model_lock.release()
+            act_res_q = act_res_Qs[requester_id]
+            act_res_q.put((action, qval))
+            # train net
+            mem_lock.acquire()
+            model_lock.acquire()
+            loss, _ = self.train_actor_critic()
+            losses.append(loss)
+            model_lock.release()
+            mem_lock.release()
+
+        t.join()
 
         for s in samplers:
             s.join()
